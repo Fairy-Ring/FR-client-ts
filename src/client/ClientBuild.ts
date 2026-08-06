@@ -1098,7 +1098,9 @@ export default class ClientBuild {
                 if (loc.anim === -1 && loc.multiloc === null) {
                     model = loc.getModel(22, angle, heightSW, heightSE, heightNE, heightNW, -1);
                 } else {
-                    model = new ClientLocAnim(locId, 22, shape, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
+                    // Java method13/21: ClientLocAnim(seq, …, shape=22, locId, true, …, angle=arg5)
+                    // Third ctor arg is rotation angle (0–3), NOT LocShape.GROUND_DECOR (22).
+                    model = new ClientLocAnim(locId, 22, angle, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
                 }
 
                 world?.setGroundDecor(model, level, x, z, y, typecode, typecode2);
@@ -1495,7 +1497,8 @@ export default class ClientBuild {
             if (loc.anim === -1 && loc.multiloc === null) {
                 model = loc.getModel(22, angle, heightSW, heightSE, heightNE, heightNW, -1);
             } else {
-                model = new ClientLocAnim(locId, 22, shape, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
+                // Java: third ctor arg is angle (0–3), not LocShape.GROUND_DECOR (22)
+                model = new ClientLocAnim(locId, 22, angle, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
             }
 
             world?.setGroundDecor(model, level, x, z, y, typecode, typecode2);

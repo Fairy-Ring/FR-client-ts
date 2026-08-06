@@ -48,20 +48,22 @@ export default class ClientLocAnim extends ModelSource {
         this.heightNE = heightNE;
         this.heightNW = heightNW;
 
-        // Java: if (arg0 != -1) { field1338 = SeqType... } — multiloc-only locs pass seq=-1
-        if (seq !== -1) {
+        // Java: if (arg0 != -1) { field1338 = SeqType...; field1343 = loopCycle - 1; }
+        // multiloc-only locs pass seq=-1. field1343 starts at loopCycle-1 so first draw advances.
+        if (seq !== -1 && SeqType.list[seq]) {
             this.anim = SeqType.list[seq];
             this.animFrame = 0;
-            this.animCycle = Client.loopCycle;
+            this.animCycle = Client.loopCycle - 1;
 
-            if (randomFrame && this.anim && this.anim.loops !== -1) {
+            // Java: arg7 && field780 != -1 (loops)
+            if (randomFrame && this.anim.loops !== -1) {
                 this.animFrame = (Math.random() * this.anim.numFrames) | 0;
                 this.animCycle -= (Math.random() * this.anim.getDelay(this.animFrame)) | 0;
             }
         } else {
             this.anim = null;
             this.animFrame = 0;
-            this.animCycle = Client.loopCycle;
+            this.animCycle = Client.loopCycle - 1;
         }
 
         // Java ClientLocAnim ctor: snapshot multi fields from LocType.method561(id)

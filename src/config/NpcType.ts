@@ -8,6 +8,17 @@ import Packet from '#/io/Packet.js';
 
 import { TypedArray1d } from '#/util/Arrays.js';
 
+import VarBitType from '#/config/VarBitType.js';
+
+/**
+ * Minimal varp holder for multi-npc resolve — Java NpcType.varProvider (Client).
+ * Same role as LocType.varProvider / method562.
+ */
+export interface NpcVarProvider {
+    /** Java Client.varps */
+    var: number[];
+}
+
 export default class NpcType {
     static numDefinitions: number = 0;
     static idx: Int32Array | null = null;
@@ -15,6 +26,14 @@ export default class NpcType {
     static recent: (NpcType | null)[] | null = null;
     static recentPos: number = 0;
     static modelCache: LruCache<Model> = new LruCache(30);
+
+    /**
+     * Java `NpcType.varProvider` — set to the live Client so method476 can read varps.
+     * @see Client load path after WordFilter.unpack
+     */
+    static varProvider: NpcVarProvider | null = null;
+    /** Java Client.VARBIT_MASKS — set with varProvider */
+    static varbitMasks: Int32Array | null = null;
 
     id: number = -1;
 
@@ -40,6 +59,16 @@ export default class NpcType {
     contrast: number = 0;
     headicon: number = -1;
     turnspeed: number = 32;
+    /** 377 multi-npc (Java field1457 / field1462 / field1425) */
+    multivarbit: number = -1;
+    multivar: number = -1;
+    multinpc: Int32Array | null = null;
+    /** Java field1434; opcode 107 clears */
+    active: boolean = true;
+    /** Java field1451 / field1430 / field1440 — opcodes 90–92 store g2 (not skip) */
+    unused90: number = -1;
+    unused91: number = -1;
+    unused92: number = -1;
 
     static init(config: JagFile): void {
         this.dat = new Packet(config.read('npc.dat'));
@@ -82,24 +111,36 @@ export default class NpcType {
         return npc;
     }
 
+    /**
+     * Port of Client-Java `NpcType.method470` (377).
+     * Do not “skip” payload bytes unless Java skips them.
+     */
     decode(dat: Packet): void {
+        // defaults for fields that may not appear (list() constructs a fresh instance)
+        this.multivarbit = -1;
+        this.multivar = -1;
+        this.multinpc = null;
+        this.active = true;
+        this.unused90 = -1;
+        this.unused91 = -1;
+        this.unused92 = -1;
+
         while (true) {
             const code = dat.g1();
             if (code === 0) {
-                break;
+                return;
             }
 
             if (code === 1) {
-                const count: number = dat.g1();
+                const count = dat.g1();
                 this.model = new Uint16Array(count);
-
-                for (let i: number = 0; i < count; i++) {
+                for (let i = 0; i < count; i++) {
                     this.model[i] = dat.g2();
                 }
             } else if (code === 2) {
                 this.name = dat.gjstr();
             } else if (code === 3) {
-                this.desc = dat.gjstr();
+                this.desc = dat.gjstr(); // Java: gjstrraw → string in TS
             } else if (code === 12) {
                 this.size = dat.g1b();
             } else if (code === 13) {
@@ -115,33 +156,30 @@ export default class NpcType {
                 if (!this.op) {
                     this.op = new TypedArray1d(5, null);
                 }
-
                 this.op[code - 30] = dat.gjstr();
                 if (this.op[code - 30]?.toLowerCase() === 'hidden') {
                     this.op[code - 30] = null;
                 }
             } else if (code === 40) {
-                const count: number = dat.g1();
+                const count = dat.g1();
                 this.recol_s = new Uint16Array(count);
                 this.recol_d = new Uint16Array(count);
-
-                for (let i: number = 0; i < count; i++) {
+                for (let i = 0; i < count; i++) {
                     this.recol_s[i] = dat.g2();
                     this.recol_d[i] = dat.g2();
                 }
             } else if (code === 60) {
-                const count: number = dat.g1();
+                const count = dat.g1();
                 this.head = new Uint16Array(count);
-
-                for (let i: number = 0; i < count; i++) {
+                for (let i = 0; i < count; i++) {
                     this.head[i] = dat.g2();
                 }
             } else if (code === 90) {
-                dat.pos += 2;
+                this.unused90 = dat.g2();
             } else if (code === 91) {
-                dat.pos += 2;
+                this.unused91 = dat.g2();
             } else if (code === 92) {
-                dat.pos += 2;
+                this.unused92 = dat.g2();
             } else if (code === 93) {
                 this.minimap = false;
             } else if (code === 95) {
@@ -160,11 +198,98 @@ export default class NpcType {
                 this.headicon = dat.g2();
             } else if (code === 103) {
                 this.turnspeed = dat.g2();
+            } else if (code === 106) {
+                this.multivarbit = dat.g2();
+                if (this.multivarbit === 65535) {
+                    this.multivarbit = -1;
+                }
+                this.multivar = dat.g2();
+                if (this.multivar === 65535) {
+                    this.multivar = -1;
+                }
+                const count = dat.g1();
+                this.multinpc = new Int32Array(count + 1);
+                for (let i = 0; i <= count; i++) {
+                    this.multinpc[i] = dat.g2();
+                    if (this.multinpc[i] === 65535) {
+                        this.multinpc[i] = -1;
+                    }
+                }
+            } else if (code === 107) {
+                this.active = false;
+            } else {
+                console.error(`NpcType ${this.id}: unhandled opcode ${code} — abort decode (Java method470)`);
+                return;
             }
         }
     }
 
+    /**
+     * Port of Client-Java 377 `NpcType.method473`.
+     * True when there is no multi table, or the current var state indexes a valid type id.
+     * Used by pushNpcs to skip inactive multi slots entirely.
+     */
+    isMultiActive(): boolean {
+        if (!this.multinpc) {
+            return true;
+        }
+        return this.getMultiNpc() !== null;
+    }
+
+    /**
+     * Port of Client-Java 377 `NpcType.method476`.
+     * Resolves multi-npc via varbit / varp. Callers check `multinpc != null` first.
+     * Returns null if the var state indexes a missing / -1 multinpc slot (inactive).
+     *
+     * Prefer `activeType()` for name / op / model / examine consumers.
+     */
+    getMultiNpc(): NpcType | null {
+        if (!this.multinpc) {
+            return null;
+        }
+
+        let state: number = -1;
+        const provider = NpcType.varProvider;
+        const masks = NpcType.varbitMasks;
+
+        if (this.multivarbit !== -1) {
+            const varbit: VarBitType = VarBitType.list[this.multivarbit];
+            if (provider && masks && varbit) {
+                const mask: number = masks[varbit.endbit - varbit.startbit];
+                state = (provider.var[varbit.basevar] >> varbit.startbit) & mask;
+            }
+        } else if (this.multivar !== -1) {
+            if (provider) {
+                state = provider.var[this.multivar];
+            }
+        }
+
+        if (state < 0 || state >= this.multinpc.length || this.multinpc[state] === -1) {
+            return null;
+        }
+        return NpcType.list(this.multinpc[state]);
+    }
+
+    /**
+     * Active display type: multi-resolved form, or `this` when not multi.
+     * Port of the common Java pattern: if multi then method476 else base.
+     * Prefer this over raw `npc.type` for name / op / model / examine / menu.
+     * Returns null when multi slot is inactive (method476 null).
+     */
+    activeType(): NpcType | null {
+        if (!this.multinpc) {
+            return this;
+        }
+        return this.getMultiNpc();
+    }
+
     getTempModel(primaryTransformId: number, secondaryTransformId: number, seqMask: Int32Array | null): Model | null {
+        // Java method475: if multi table, resolve then recurse on concrete form
+        if (this.multinpc) {
+            const multi = this.getMultiNpc();
+            return multi ? multi.getTempModel(primaryTransformId, secondaryTransformId, seqMask) : null;
+        }
+
         let model = NpcType.modelCache.find(BigInt(this.id));
 
         if (!model && this.model) {
@@ -231,6 +356,12 @@ export default class NpcType {
     }
 
     getHead(): Model | null {
+        // Java getHeadModel: multi resolve first
+        if (this.multinpc) {
+            const multi = this.getMultiNpc();
+            return multi ? multi.getHead() : null;
+        }
+
         if (!this.head) {
             return null;
         }

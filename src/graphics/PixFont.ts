@@ -174,6 +174,80 @@ export default class PixFont extends Linkable2 {
         }
     }
 
+    /** Java 377 `centreStringWave2` — dual-axis sine wave (chat overhead). */
+    centreStringWave2(str: string | null, x: number, y: number, rgb: number, phase: number): void {
+        if (str === null) {
+            return;
+        }
+
+        x |= 0;
+        y |= 0;
+
+        let cursorX: number = x - ((this.stringWid(str) / 2) | 0);
+        const offY: number = y - this.height;
+
+        for (let i: number = 0; i < str.length; i++) {
+            const c: number = str.charCodeAt(i);
+            if (c !== 32) {
+                this.plotLetter(
+                    this.charMask[c],
+                    cursorX + this.charOffsetX[c] + ((Math.sin(phase / 5.0 + i / 5.0) * 5.0) | 0),
+                    offY + this.charOffsetY[c] + ((Math.sin(phase / 5.0 + i / 3.0) * 5.0) | 0),
+                    this.charMaskWidth[c],
+                    this.charMaskHeight[c],
+                    rgb
+                );
+            }
+            cursorX += this.charAdvance[c];
+        }
+    }
+
+    /**
+     * Java 377 `centreStringShake` (289 `centreStringWave3`).
+     * Amplitude falls with `strength` (e.g. remaining chat timer).
+     */
+    centreStringShake(str: string | null, x: number, y: number, rgb: number, strength: number, phase: number): void {
+        if (str === null) {
+            return;
+        }
+
+        x |= 0;
+        y |= 0;
+
+        let amp: number = 7.0 - strength / 8.0;
+        if (amp < 0.0) {
+            amp = 0.0;
+        }
+
+        let cursorX: number = x - ((this.stringWid(str) / 2) | 0);
+        const offY: number = y - this.height;
+
+        for (let i: number = 0; i < str.length; i++) {
+            const c: number = str.charCodeAt(i);
+            if (c !== 32) {
+                this.plotLetter(
+                    this.charMask[c],
+                    cursorX + this.charOffsetX[c],
+                    offY + this.charOffsetY[c] + ((Math.sin(i / 1.5 + phase) * amp) | 0),
+                    this.charMaskWidth[c],
+                    this.charMaskHeight[c],
+                    rgb
+                );
+            }
+            cursorX += this.charAdvance[c];
+        }
+    }
+
+    /** Alias kept for 289-era call sites. */
+    centreStringWave3(str: string | null, x: number, y: number, rgb: number, strength: number, phase: number): void {
+        this.centreStringShake(str, x, y, rgb, strength, phase);
+    }
+
+    /** Same math as `stringWid` (skips `@tag@`); Java keeps a separate name. */
+    stringWidTag(str: string | null): number {
+        return this.stringWid(str);
+    }
+
     drawStringTag(str: string, x: number, y: number, rgb: number, shadowed: boolean): void {
         x |= 0;
         y |= 0;
@@ -242,7 +316,11 @@ export default class PixFont extends Linkable2 {
         }
     }
 
-    updateState(tag: string): number {
+    /**
+     * Java 377 `evaluateTag` (289 `updateState`).
+     * Colour tags return RGB; `str`/`end` toggle strikeout.
+     */
+    evaluateTag(tag: string): number {
         if (tag === 'red') {
             return Colour.RED;
         } else if (tag === 'gre') {
@@ -281,9 +359,18 @@ export default class PixFont extends Linkable2 {
             if (tag === 'str') {
                 this.strikeout = true;
             }
+            // Java 377: @end@ clears strikeout (missing from 289 updateState path in some deobs)
+            if (tag === 'end') {
+                this.strikeout = false;
+            }
 
             return -1;
         }
+    }
+
+    /** 289 name — same as `evaluateTag`. */
+    updateState(tag: string): number {
+        return this.evaluateTag(tag);
     }
 
     drawStringRight(str: string, x: number, y: number, rgb: number, shadowed: boolean = true): void {

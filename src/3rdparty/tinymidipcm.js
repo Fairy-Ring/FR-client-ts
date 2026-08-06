@@ -176,9 +176,37 @@ class TinyMidiPCM {
 
     await tinyMidiPCM.init();
 
-    const soundfontRes = await fetch(new URL('SCC1_Florestan.sf2', import.meta.url));
-    const soundfontBuffer = new Uint8Array(await soundfontRes.arrayBuffer());
-    tinyMidiPCM.setSoundfont(soundfontBuffer);
+    // Soft-fail if soundfont is missing so login is not an uncaught reject.
+    // Try beside the bundle (client.js or harness-client.js), then fixed public paths.
+    try {
+        const sfUrls = [
+            new URL('SCC1_Florestan.sf2', import.meta.url).href,
+            '/client/SCC1_Florestan.sf2',
+            '/harness/SCC1_Florestan.sf2'
+        ];
+        let loaded = false;
+        for (const url of sfUrls) {
+            try {
+                const soundfontRes = await fetch(url);
+                if (!soundfontRes.ok) continue;
+                const soundfontBuffer = new Uint8Array(await soundfontRes.arrayBuffer());
+                if (soundfontBuffer.byteLength < 1000) continue;
+                tinyMidiPCM.setSoundfont(soundfontBuffer);
+                console.info(`[tinymidipcm] soundfont loaded from ${url} (${soundfontBuffer.byteLength} bytes)`);
+                loaded = true;
+                break;
+            } catch {
+                /* try next */
+            }
+        }
+        if (!loaded) {
+            console.warn(
+                '[tinymidipcm] SCC1_Florestan.sf2 not found beside bundle or at /client|/harness — MIDI disabled'
+            );
+        }
+    } catch (err) {
+        console.warn('[tinymidipcm] failed to load SCC1_Florestan.sf2; MIDI disabled', err);
+    }
 
     function flush() {
         if (!window.audioContext || !samples.length) {
@@ -258,6 +286,10 @@ class TinyMidiPCM {
     }
 
     function start(volume, midiBuffer) {
+        if (!tinyMidiPCM.soundfontPtr) {
+            // Soundfont never loaded (missing deploy of SCC1_Florestan.sf2).
+            return;
+        }
         applyOutputVolumeDb(volume);
         // currentMidiBuffer = midiBuffer;
         // startTime = window.audioContext.currentTime;

@@ -74,7 +74,9 @@ const TEXTURE_AVERAGE = Uint16Array.of(
     28992, // gungywater
     41, 41, 41, 41, 41,
     5056, // lava
-    41, 41, 41, 41, 41, 41, 41, 41, 41, 41, 41, 41, 41, 41,
+    41, 41, 41,
+    7079, // field1062 texture average (377)
+    41, 41, 41, 41, 41, 41, 41, 41, 41, 41,
     3131, // pebblefloor
     41, 41, 41
 );
@@ -183,12 +185,21 @@ export default class World {
         World.spriteBuffer.fill(null);
     }
 
+    /**
+     * Java World3D.method275 — set draw base level; only allocate missing squares.
+     * If `level` is out of range (e.g. World.field113 still 99), clamp to 0 so renderAll is not empty.
+     */
     fillBaseLevel(level: number): void {
+        if (level < 0 || level >= this.maxTileLevel) {
+            level = 0;
+        }
         this.minLevel = level;
 
         for (let stx: number = 0; stx < this.maxTileX; stx++) {
             for (let stz: number = 0; stz < this.maxTileZ; stz++) {
-                this.squares[level][stx][stz] = new Square(level, stx, stz);
+                if (!this.squares[level][stx][stz]) {
+                    this.squares[level][stx][stz] = new Square(level, stx, stz);
+                }
             }
         }
     }
@@ -237,6 +248,11 @@ export default class World {
         tile.drawLevel = drawLevel;
     }
 
+    /**
+     * Java World3D.method279.
+     * Last two args are minimap RGBs: underlayRgb (arg18 / var88), overlayRgb (arg19 / var93).
+     * (Previously misnamed overlay/underlay which swapped minimap colours on shaped Ground.)
+     */
     setGround(
         level: number, x: number, z: number,
         shape: number, rotation: number,
@@ -244,7 +260,7 @@ export default class World {
         heightSW: number, heightSE: number, heightNE: number, heightNW: number,
         colourSW: number, colourSE: number, colourNE: number, colourNW: number,
         colour2SW: number, colour2SE: number, colour2NE: number, colour2NW: number,
-        overlay: number, underlay: number
+        underlayRgb: number, overlayRgb: number
     ): void {
         if (shape === TerrainOverlayShape.PLAIN) {
             for (let l: number = level; l >= 0; l--) {
@@ -255,10 +271,11 @@ export default class World {
 
             const tile: Square | null = this.squares[level][x][z];
             if (tile) {
+                // method279 arg3==0: QuickGround(cSW..cNW, -1, arg18=underlayRgb, false)
                 tile.quickGround = new QuickGround(
                     colourSW, colourSE, colourNE, colourNW,
                     -1,
-                    overlay,
+                    underlayRgb,
                     false
                 );
             }
@@ -271,10 +288,11 @@ export default class World {
 
             const tile: Square | null = this.squares[level][x][z];
             if (tile) {
+                // method279 arg3==1: QuickGround(c2*, texture, arg19=overlayRgb, flat)
                 tile.quickGround = new QuickGround(
                     colour2SW, colour2SE, colour2NE, colour2NW,
                     texture,
-                    underlay,
+                    overlayRgb,
                     heightSW === heightSE && heightSW === heightNE && heightSW === heightNW
                 );
             }
@@ -287,6 +305,7 @@ export default class World {
 
             const tile: Square | null = this.squares[level][x][z];
             if (tile) {
+                // Ground ctor: minimapOverlay = overlayRgb, minimapUnderlay = underlayRgb
                 tile.ground = new Ground(
                     x, z,
                     shape, rotation,
@@ -294,7 +313,7 @@ export default class World {
                     heightSW, heightSE, heightNE, heightNW,
                     colourSW, colourSE, colourNE, colourNW,
                     colour2SW, colour2SE, colour2NE, colour2NW,
-                    overlay, underlay
+                    overlayRgb, underlayRgb
                 );
             }
         }

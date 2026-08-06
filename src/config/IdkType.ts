@@ -31,11 +31,15 @@ export default class IdkType {
         }
     }
 
+    /**
+     * Port of Client-Java `IdkType.method576` (377).
+     * Do not “skip” payload bytes unless Java skips them.
+     */
     decode(dat: Packet): void {
         while (true) {
             const code = dat.g1();
             if (code === 0) {
-                break;
+                return;
             }
 
             if (code === 1) {

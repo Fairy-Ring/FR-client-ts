@@ -17,18 +17,19 @@ import Packet from '#/io/Packet.js';
 
 import { TypedArray1d } from '#/util/Arrays.js';
 
+/** 377 mask bits — oracle Client-Java getPlayerExtendedInfo / rsbuf PlayerInfoProt */
 export const enum PlayerUpdate {
-    APPEARANCE = 0x1,
-    ANIM = 0x2,
-    FACEENTITY = 0x4,
-    SAY = 0x8,
-    HITMARK = 0x10,
-    FACESQUARE = 0x20,
+    FACEENTITY = 0x1,
+    FACESQUARE = 0x2,
+    APPEARANCE = 0x4,
+    ANIM = 0x8,
+    SAY = 0x10,
+    BIG_UPDATE = 0x20,
     CHAT = 0x40,
-    BIG_UPDATE = 0x80,
-    SPOTANIM = 0x100,
-    EXACTMOVE = 0x200,
-    HITMARK2 = 0x400,
+    HITMARK2 = 0x80,
+    EXACTMOVE = 0x100,
+    SPOTANIM = 0x200,
+    HITMARK = 0x400,
 }
 
 const enum HairColour {
@@ -200,7 +201,10 @@ export default class ClientPlayer extends ClientEntity {
     name: string | null = null;
     ready: boolean = false;
     gender: number = 0;
-    headicons: number = 0;
+    /** 377 Java field1678 — signed headicons_pk index (-1 = none) */
+    headiconPk: number = -1;
+    /** 377 Java field1670 — signed headicons_prayer index (-1 = none) */
+    headiconPrayer: number = -1;
     appearance: Uint16Array = new Uint16Array(12);
     colour: Uint16Array = new Uint16Array(5);
     combatLevel: number = 0;
@@ -208,7 +212,8 @@ export default class ClientPlayer extends ClientEntity {
     baseId: bigint = 0n;
     lowMemory: boolean = false;
     modelCacheKey: bigint = -1n;
-    static modelCache: LruCache<Model> = new LruCache(200);
+    /** Java ClientPlayer.field1683 = new LruCache(260) */
+    static modelCache: LruCache<Model> = new LruCache(260);
     y: number = 0;
     locStartCycle: number = 0;
     locStopCycle: number = 0;
@@ -223,11 +228,18 @@ export default class ClientPlayer extends ClientEntity {
     transmog: NpcType | null = null;
     skillLevel: number = 0;
 
+    /**
+     * 377 Java ClientPlayer.method574 — appearance wire:
+     * gender(u8), headiconPk(s8), headiconPrayer(s8), 12×parts, 5×colours,
+     * 7×anim(u16), name(g8), combat(u8), skill(u16).
+     * Not the 289 single headicons bitmask.
+     */
     setAppearance(buf: Packet): void {
         buf.pos = 0;
 
         this.gender = buf.g1();
-        this.headicons = buf.g1();
+        this.headiconPk = buf.g1b();
+        this.headiconPrayer = buf.g1b();
         this.transmog = null;
         this.team = 0;
 
@@ -299,6 +311,12 @@ export default class ClientPlayer extends ClientEntity {
         this.skillLevel = buf.g2();
         this.ready = true;
 
+        // Java swaps slots 5/9 while hashing model key (held items vs cape/amulet order)
+        const slot5 = this.appearance[5];
+        const slot9 = this.appearance[9];
+        this.appearance[5] = slot9;
+        this.appearance[9] = slot5;
+
         this.baseId = 0n;
         for (let part: number = 0; part < 12; part++) {
             this.baseId <<= 0x4n;
@@ -312,6 +330,10 @@ export default class ClientPlayer extends ClientEntity {
         if (this.appearance[1] >= 256) {
             this.baseId += (BigInt(this.appearance[1]) - 256n) >> 8n;
         }
+
+        this.appearance[5] = slot5;
+        this.appearance[9] = slot9;
+
         for (let part: number = 0; part < 5; part++) {
             this.baseId <<= 0x3n;
             this.baseId += BigInt(this.colour[part]);

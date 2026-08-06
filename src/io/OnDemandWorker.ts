@@ -523,9 +523,14 @@ class WorkerOnDemand {
                 if (this.current) {
                     this.packetCycle = 0;
 
+                    // Java OnDemand.read: size==0 is server reject — null data,
+                    // complete only if urgent; do NOT apply archive-3→93 transform.
                     if (size === 0) {
                         this.current.data = null;
-                        this.complete(this.current);
+                        if (this.current.urgent) {
+                            this.postCompleted(this.current);
+                        }
+                        this.removePending(this.current);
                         this.current = null;
                     } else {
                         if (this.current.data === null && part === 0) {
@@ -576,18 +581,27 @@ class WorkerOnDemand {
         }
     }
 
+    /**
+     * Java OnDemand.validate(src, expectedCrc, expectedVersion).
+     * 377 call sites pass (crc, version) — opposite of 289 (version, crc).
+     * Trailer: last 2 bytes = version BE; CRC32 over prefix.
+     */
     private validate(src: Uint8Array | undefined, expectedCrc: number, expectedVersion: number): boolean {
         if (typeof src === 'undefined' || src.length < 2) {
             return false;
         }
 
-        const trailerPos = src.length - 2;
-        const version = ((src[trailerPos] & 0xff) << 8) + (src[trailerPos + 1] & 0xff);
-        const crc = getcrc(src, 0, trailerPos);
+        const versionPos = src.length - 2;
+        const version = ((src[versionPos] & 0xff) << 8) + (src[versionPos + 1] & 0xff);
+        const crc = getcrc(src, 0, versionPos);
 
-        return version === expectedVersion && crc === expectedCrc;
+        if (version === expectedVersion) {
+            return crc === expectedCrc;
+        }
+        return false;
     }
 
+    /** Java OnDemand.send — open socket, handshake 15 + 8 discard, then 4-byte request. */
     private async send(req: WorkerRequest): Promise<void> {
         try {
             if (this.stream === null) {
@@ -613,6 +627,7 @@ class WorkerOnDemand {
             this.buf[1] = req.file >> 8;
             this.buf[2] = req.file;
 
+            // priority nibble: urgent=2, login preload=1, ingame prefetch=0
             if (req.urgent) {
                 this.buf[3] = 2;
             } else if (this.ingame) {
@@ -632,6 +647,10 @@ class WorkerOnDemand {
         }
     }
 
+    /**
+     * Java OnDemand successful-part complete path:
+     * non-urgent map (archive 3) is rewritten to urgent archive 93 so main thread gets the data.
+     */
     private complete(req: WorkerRequest): void {
         this.removePending(req);
 

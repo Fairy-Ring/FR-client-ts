@@ -55,12 +55,14 @@ export default class ObjType {
     countco: Uint16Array | null = null;
     certlink: number = -1;
     certtemplate: number = -1;
-    resizex: number = 0;
-    resizey: number = 0;
-    resizez: number = 0;
+    resizex: number = 128;
+    resizey: number = 128;
+    resizez: number = 128;
     ambient: number = 0;
     contrast: number = 0;
     team: number = 0;
+    /** Java field854 — opcode 10 stores g2 (not skip) */
+    unused10: number = -1;
 
     static init(config: JagFile, members: boolean): void {
         this.memServer = members;
@@ -112,11 +114,13 @@ export default class ObjType {
             obj.desc = "Login to a members' server to use this object.";
             obj.op = null;
             obj.iop = null;
+            obj.team = 0; // Java field814
         }
 
         return obj;
     }
 
+    /** Java ObjType.method232 */
     private reset(): void {
         this.model = 0;
         this.name = null;
@@ -129,6 +133,7 @@ export default class ObjType {
         this.zan2d = 0;
         this.xof2d = 0;
         this.yof2d = 0;
+        this.unused10 = -1;
         this.stackable = false;
         this.cost = 1;
         this.members = false;
@@ -158,11 +163,15 @@ export default class ObjType {
         this.team = 0;
     }
 
+    /**
+     * Port of Client-Java `ObjType.method227` (377).
+     * Do not “skip” payload bytes unless Java skips them.
+     */
     decode(dat: Packet): void {
         while (true) {
             const code = dat.g1();
             if (code === 0) {
-                break;
+                return;
             }
 
             if (code === 1) {
@@ -170,7 +179,7 @@ export default class ObjType {
             } else if (code === 2) {
                 this.name = dat.gjstr();
             } else if (code === 3) {
-                this.desc = dat.gjstr();
+                this.desc = dat.gjstr(); // Java: gjstrraw → string in TS
             } else if (code === 4) {
                 this.zoom2d = dat.g2();
             } else if (code === 5) {
@@ -178,17 +187,18 @@ export default class ObjType {
             } else if (code === 6) {
                 this.yan2d = dat.g2();
             } else if (code === 7) {
-                this.xof2d = dat.g2b();
+                // Java: g2 then sign-extend if > 32767
+                this.xof2d = dat.g2();
                 if (this.xof2d > 32767) {
                     this.xof2d -= 65536;
                 }
             } else if (code === 8) {
-                this.yof2d = dat.g2b();
+                this.yof2d = dat.g2();
                 if (this.yof2d > 32767) {
                     this.yof2d -= 65536;
                 }
             } else if (code === 10) {
-                dat.pos += 2;
+                this.unused10 = dat.g2(); // Java field854
             } else if (code === 11) {
                 this.stackable = true;
             } else if (code === 12) {
@@ -270,6 +280,7 @@ export default class ObjType {
         }
     }
 
+    /** Java ObjType.method224 */
     private genCert(): void {
         const template: ObjType = ObjType.list(this.certtemplate);
         this.model = template.model;
@@ -288,8 +299,9 @@ export default class ObjType {
         this.cost = link.cost;
 
         let article: string = 'a';
-        const c: string = (link.name || '').toLowerCase().charAt(0);
-        if (c === 'a' || c === 'e' || c === 'i' || c === 'o' || c === 'u') {
+        // Java checks original case first char (A/E/I/O/U)
+        const c: string = (link.name || '').charAt(0);
+        if (c === 'A' || c === 'E' || c === 'I' || c === 'O' || c === 'U') {
             article = 'an';
         }
         this.desc = `Swap this note at any bank for ${article} ${link.name}.`;

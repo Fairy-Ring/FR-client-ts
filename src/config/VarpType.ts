@@ -4,21 +4,50 @@ import Packet from '#/io/Packet.js';
 export default class VarpType {
     static numDefinitions: number = 0;
     static list: VarpType[] = [];
+    /** Java field1508 — count of transmit-to-server varps */
+    static codeCount: number = 0;
+    /** Java field1509 — ids of transmit-to-server varps (opcode 3) */
+    static codeIds: Int32Array | null = null;
 
+    /** Java field1511 — opcode 1 */
+    type: number = 0;
+    /** Java field1512 — opcode 2 */
+    type2: number = 0;
+    /** Java field1513 — opcode 3 */
+    transmit: boolean = false;
+    /** Java field1514 — opcode 4 clears; default true */
+    keepBit: boolean = true;
+    /** Java field1515 — opcode 5 (client-side behaviour) */
     clientcode: number = 0;
+    /** Java field1516 — opcode 6 */
+    protect: boolean = false;
+    /** Java field1517 — opcode 7 */
+    unused7: number = 0;
+    /** Java field1518 — 1 from opcode 8, 2 from opcode 13 */
+    scopeType: number = 0;
+    /** Java field1519 — set by opcodes 8/11/13 and VarBitType opcode 2 */
+    scope: boolean = false;
+    /** Java field1520 — opcode 12; default -1 */
+    unused12: number = -1;
+    /** Java field1521 — opcode 14 clears; default true */
+    unused14: boolean = true;
+    /** Java field1510 — opcode 10 */
+    debugname: string = '';
 
     static init(config: JagFile): void {
         const dat: Packet = new Packet(config.read('varp.dat'));
 
+        this.codeCount = 0;
         this.numDefinitions = dat.g2();
         this.list = new Array(this.numDefinitions);
+        this.codeIds = new Int32Array(this.numDefinitions);
 
         for (let id: number = 0; id < this.numDefinitions; id++) {
             if (!this.list[id]) {
                 this.list[id] = new VarpType();
             }
 
-            this.list[id].decode(dat);
+            this.list[id].decode(id, dat);
         }
 
         if (dat.pos != dat.data.length) {
@@ -26,37 +55,48 @@ export default class VarpType {
         }
     }
 
-    decode(dat: Packet): void {
+    /**
+     * Port of Client-Java `VarpType.method485` (377).
+     * Do not “skip” payload bytes unless Java skips them.
+     */
+    decode(id: number, dat: Packet): void {
         while (true) {
             const code = dat.g1();
             if (code === 0) {
-                break;
+                return;
             }
 
             if (code === 1) {
-                dat.pos += 1;
+                this.type = dat.g1();
             } else if (code === 2) {
-                dat.pos += 1;
+                this.type2 = dat.g1();
             } else if (code === 3) {
-                // server-side
+                this.transmit = true;
+                if (VarpType.codeIds) {
+                    VarpType.codeIds[VarpType.codeCount++] = id;
+                }
             } else if (code === 4) {
-                // server-side
+                this.keepBit = false;
             } else if (code === 5) {
                 this.clientcode = dat.g2();
             } else if (code === 6) {
-                // server-side
+                this.protect = true;
             } else if (code === 7) {
-                dat.pos += 4;
+                this.unused7 = dat.g4();
             } else if (code === 8) {
-                // server-side
+                this.scopeType = 1;
+                this.scope = true;
             } else if (code === 10) {
-                dat.gjstr();
+                this.debugname = dat.gjstr();
             } else if (code === 11) {
-                // server-side
+                this.scope = true;
             } else if (code === 12) {
-                dat.pos += 4;
+                this.unused12 = dat.g4();
             } else if (code === 13) {
-                // server-side
+                this.scopeType = 2;
+                this.scope = true;
+            } else if (code === 14) {
+                this.unused14 = false;
             } else {
                 console.log('Error unrecognised config code: ', code);
             }

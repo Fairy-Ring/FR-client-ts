@@ -51,10 +51,10 @@ export default abstract class GameShell {
         e.preventDefault();
     };
 
-    protected async maininit() { }
-    protected mainquit() { }
-    protected async mainloop() { }
-    protected async mainredraw() { }
+    protected async load() { }
+    protected unload() { }
+    protected async update() { }
+    protected async draw() { }
     protected refresh() { }
 
     constructor(resizetoFit: boolean = false) {
@@ -120,7 +120,7 @@ export default abstract class GameShell {
         };
 
         await this.drawProgress('Loading...', 0);
-        await this.maininit();
+        await this.load();
 
         let ntime: number = 0;
         let opos: number = 0;
@@ -189,7 +189,7 @@ export default abstract class GameShell {
                 this.mouseClickTime = this.nextMouseClickTime;
                 this.nextMouseClickButton = 0;
 
-                await this.mainloop();
+                await this.update();
 
                 this.keyQueueReadPos = this.keyQueueWritePos;
                 count += ratio;
@@ -200,7 +200,7 @@ export default abstract class GameShell {
                 this.fps = ((ratio * 1000) / (this.deltime * 256)) | 0;
             }
 
-            await this.mainredraw();
+            await this.draw();
 
             // this is custom for targeting specific fps (on mobile).
             if (this.tfps < 50) {
@@ -230,7 +230,7 @@ export default abstract class GameShell {
 
     protected shutdown() {
         this.state = -2;
-        this.mainquit();
+        this.unload();
 
         window.removeEventListener('resize', this.resizeHandler, false);
         canvas.onfocus = null;

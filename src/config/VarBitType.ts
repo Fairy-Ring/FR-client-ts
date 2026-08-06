@@ -1,3 +1,5 @@
+import VarpType from '#/config/VarpType.js';
+
 import JagFile from '#/io/JagFile.js';
 import Packet from '#/io/Packet.js';
 
@@ -8,7 +10,16 @@ export default class VarBitType {
     basevar: number = -1;
     startbit: number = 0;
     endbit: number = 0;
+    /** Java field1761 — opcode 10 */
     debugname: string = '';
+    /** Java field1765 — opcode 2; also marks VarpType.scope during unpack */
+    unused2: boolean = false;
+    /** Java field1766 — opcode 3; default -1 */
+    unused3: number = -1;
+    /** Java field1767 — opcode 4 */
+    unused4: number = 0;
+    /** Java field1768 — opcode 5 clears; default true */
+    unused5: boolean = true;
 
     static init(config: JagFile): void {
         const dat: Packet = new Packet(config.read('varbit.dat'));
@@ -21,7 +32,15 @@ export default class VarBitType {
                 this.list[id] = new VarBitType();
             }
 
-            this.list[id].decode(dat);
+            this.list[id].decode(id, dat);
+
+            // Java VarbitType.unpack: if field1765, mark linked VarpType.field1519
+            if (this.list[id].unused2) {
+                const base = this.list[id].basevar;
+                if (base >= 0 && base < VarpType.list.length) {
+                    VarpType.list[base].scope = true;
+                }
+            }
         }
 
         if (dat.pos != dat.data.length) {
@@ -29,11 +48,15 @@ export default class VarBitType {
         }
     }
 
-    decode(dat: Packet): void {
+    /**
+     * Port of Client-Java `VarbitType.method603` (377).
+     * Do not “skip” payload bytes unless Java skips them.
+     */
+    decode(_id: number, dat: Packet): void {
         while (true) {
             const code = dat.g1();
             if (code === 0) {
-                break;
+                return;
             }
 
             if (code === 1) {
@@ -43,11 +66,13 @@ export default class VarBitType {
             } else if (code === 10) {
                 this.debugname = dat.gjstr();
             } else if (code === 2) {
-                // server-side
+                this.unused2 = true;
             } else if (code === 3) {
-                dat.pos += 4;
+                this.unused3 = dat.g4();
             } else if (code === 4) {
-                dat.pos += 4;
+                this.unused4 = dat.g4();
+            } else if (code === 5) {
+                this.unused5 = false;
             } else {
                 console.log('Error unrecognised config code: ', code);
             }

@@ -37,7 +37,10 @@ export default class SeqType {
     maxloops: number = 99;
     preanim_move: number = -1;
     postanim_move: number = -1;
-    duplicatebehaviour: number = -1;
+    /** Java field789 default 2 (RestartMode.RESETLOOP) */
+    duplicatebehaviour: number = RestartMode.RESETLOOP;
+    /** Java field790 — opcode 12 stores g4 (not skip) */
+    unused12: number = 0;
 
     static init(config: JagFile): void {
         const dat: Packet = new Packet(config.read('seq.dat'));
@@ -75,11 +78,44 @@ export default class SeqType {
         return delay;
     }
 
+    /**
+     * Port of Client-Java `SeqType.method215` (377).
+     * Do not “skip” payload bytes unless Java skips them.
+     */
     decode(dat: Packet): void {
         while (true) {
             const code = dat.g1();
             if (code === 0) {
-                break;
+                // post-decode defaults (Java method215 tail on opcode 0)
+                if (this.numFrames === 0) {
+                    this.numFrames = 1;
+
+                    this.frames = new Int16Array(1);
+                    this.frames[0] = -1;
+
+                    this.iframes = new Int16Array(1);
+                    this.iframes[0] = -1;
+
+                    this.delay = new Int16Array(1);
+                    this.delay[0] = -1;
+                }
+
+                if (this.preanim_move === -1) {
+                    if (this.walkmerge === null) {
+                        this.preanim_move = PreanimMove.DELAYMOVE;
+                    } else {
+                        this.preanim_move = PreanimMove.MERGE;
+                    }
+                }
+
+                if (this.postanim_move === -1) {
+                    if (this.walkmerge === null) {
+                        this.postanim_move = PostanimMove.DELAYMOVE;
+                    } else {
+                        this.postanim_move = PostanimMove.MERGE;
+                    }
+                }
+                return;
             }
 
             if (code === 1) {
@@ -126,39 +162,9 @@ export default class SeqType {
             } else if (code === 11) {
                 this.duplicatebehaviour = dat.g1();
             } else if (code === 12) {
-                // todo
-                dat.pos += 4;
+                this.unused12 = dat.g4(); // Java field790
             } else {
                 console.log('Error unrecognised seq config code: ', code);
-            }
-        }
-
-        if (this.numFrames === 0) {
-            this.numFrames = 1;
-
-            this.frames = new Int16Array(1);
-            this.frames[0] = -1;
-
-            this.iframes = new Int16Array(1);
-            this.iframes[0] = -1;
-
-            this.delay = new Int16Array(1);
-            this.delay[0] = -1;
-        }
-
-        if (this.preanim_move === -1) {
-            if (this.walkmerge === null) {
-                this.preanim_move = PreanimMove.DELAYMOVE;
-            } else {
-                this.preanim_move = PreanimMove.MERGE;
-            }
-        }
-
-        if (this.postanim_move === -1) {
-            if (this.walkmerge === null) {
-                this.postanim_move = PostanimMove.DELAYMOVE;
-            } else {
-                this.postanim_move = PostanimMove.MERGE;
             }
         }
     }

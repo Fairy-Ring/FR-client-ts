@@ -140,11 +140,12 @@ export default class Pix2D extends Linkable2 {
     }
 
     static drawRectTrans(x: number, y: number, w: number, h: number, rgb: number, alpha: number): void {
+        // Java 377: hlines full width; vlines inset by 1 with height-2 when h >= 3
         this.hlineTrans(x, y, w, rgb, alpha);
         this.hlineTrans(x, y + h - 1, w, rgb, alpha);
         if (h >= 3) {
-            this.vlineTrans(x, y, h, rgb, alpha);
-            this.vlineTrans(x + w - 1, y, h, rgb, alpha);
+            this.vlineTrans(x, y + 1, h - 2, rgb, alpha);
+            this.vlineTrans(x + w - 1, y + 1, h - 2, rgb, alpha);
         }
     }
 

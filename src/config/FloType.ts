@@ -34,11 +34,15 @@ export default class FloType {
         }
     }
 
+    /**
+     * Port of Client-Java `FloType.method217` (377).
+     * Do not “skip” payload bytes unless Java skips them.
+     */
     decode(dat: Packet): void {
         while (true) {
             const code = dat.g1();
             if (code === 0) {
-                break;
+                return;
             }
 
             if (code === 1) {
@@ -52,13 +56,32 @@ export default class FloType {
                 this.occlude = false;
             } else if (code === 6) {
                 this.debugname = dat.gjstr();
+            } else if (code === 7) {
+                // Java: recompute overlayHsl from secondary RGB while restoring HSL fields
+                const hue = this.hue;
+                const saturation = this.saturation;
+                const lightness = this.lightness;
+                const underlayHue = this.underlayHue;
+                const secondary = dat.g3();
+                this.getHsl(secondary);
+                this.hue = hue;
+                this.saturation = saturation;
+                this.lightness = lightness;
+                this.underlayHue = underlayHue;
+                this.chroma = underlayHue; // Java field806 = saved field805
             } else {
                 console.log('Error unrecognised config code: ', code);
             }
         }
     }
 
+    /** Java FloType.method218 */
     private getHsl(rgb: number): void {
+        // Java: magenta sentinel → black
+        if (rgb === 16711935) {
+            rgb = 0;
+        }
+
         const red: number = ((rgb >> 16) & 0xff) / 256.0;
         const green: number = ((rgb >> 8) & 0xff) / 256.0;
         const blue: number = (rgb & 0xff) / 256.0;

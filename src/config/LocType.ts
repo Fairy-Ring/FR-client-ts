@@ -12,6 +12,17 @@ import Packet from '#/io/Packet.js';
 import { TypedArray1d } from '#/util/Arrays.js';
 import type OnDemand from '#/io/OnDemand.js';
 
+import VarBitType from '#/config/VarBitType.js';
+
+/**
+ * Minimal varp holder for multiloc resolve — Java LocType.varProvider (Client).
+ * Avoids circular import: Client sets this after load.
+ */
+export interface LocVarProvider {
+    /** Java Client.varps */
+    var: number[];
+}
+
 export default class LocType {
     static numDefinitions: number = 0;
     static idx: Int32Array | null = null;
@@ -21,6 +32,18 @@ export default class LocType {
     static mc1: LruCache<Model> = new LruCache(500);
     static mc2: LruCache<Model> = new LruCache(30);
     static temp: Model[] = new Array(4);
+
+    /**
+     * Java `LocType.varProvider` — set to the live Client so method562 can read varps.
+     * @see Client load path after WordFilter.unpack
+     */
+    static varProvider: LocVarProvider | null = null;
+
+    /**
+     * Java `Client.VARBIT_MASKS` / TS `Client.readbit` — assigned at same time as varProvider
+     * so LocType does not import Client (cycle).
+     */
+    static varbitMasks: Int32Array | null = null;
 
     id: number = -1;
 
@@ -59,6 +82,8 @@ export default class LocType {
     raiseobject: number = 0;
     multiloc: Int32Array | null = null;
     multivarbit: number = -1;
+    /** 377 Java field1635 — second multi var (varp); required before multiloc count on opcode 77 */
+    multivar: number = -1;
 
     static init(config: JagFile): void {
         this.dat = new Packet(config.read('loc.dat'));
@@ -102,6 +127,41 @@ export default class LocType {
         return loc;
     }
 
+    /**
+     * Port of Client-Java 377 `LocType.method562`.
+     * Resolves multiloc via varbit (field1632 / multivarbit) or varp (field1635 / multivar).
+     * Callers must check `multiloc != null` first (Java Client menu + ClientLocAnim).
+     * Returns null if the var state indexes a missing / -1 multiloc slot.
+     */
+    getMultiLoc(): LocType | null {
+        if (!this.multiloc) {
+            return null;
+        }
+
+        let state: number = -1;
+        const provider = LocType.varProvider;
+        const masks = LocType.varbitMasks;
+
+        if (this.multivarbit !== -1) {
+            // Java: VarbitType.field1760[field1632]; VARBIT_MASKS[end-start]; varps[base] >> start & mask
+            const varbit: VarBitType = VarBitType.list[this.multivarbit];
+            if (provider && masks && varbit) {
+                const mask: number = masks[varbit.endbit - varbit.startbit];
+                state = (provider.var[varbit.basevar] >> varbit.startbit) & mask;
+            }
+        } else if (this.multivar !== -1) {
+            // Java: var2 = varProvider.varps[this.field1635]
+            if (provider) {
+                state = provider.var[this.multivar];
+            }
+        }
+
+        if (state < 0 || state >= this.multiloc.length || this.multiloc[state] === -1) {
+            return null;
+        }
+        return LocType.list(this.multiloc[state]);
+    }
+
     private reset(): void {
         this.model = null;
         this.shape = null;
@@ -138,6 +198,7 @@ export default class LocType {
         this.raiseobject = -1;
         this.multiloc = null;
         this.multivarbit = -1;
+        this.multivar = -1;
     }
 
     decode(dat: Packet): void {
@@ -251,7 +312,16 @@ export default class LocType {
             } else if (code === 75) {
                 this.raiseobject = dat.g1();
             } else if (code === 77) {
+                // 377 Java LocType.method568: g2 varbit, g2 varp, g1 count, (count+1)*g2
+                // (289/TS was missing the varp g2 — desyncs stream for any multi-loc)
                 this.multivarbit = dat.g2();
+                if (this.multivarbit === 65535) {
+                    this.multivarbit = -1;
+                }
+                this.multivar = dat.g2();
+                if (this.multivar === 65535) {
+                    this.multivar = -1;
+                }
                 const count: number = dat.g1();
                 this.multiloc = new Int32Array(count + 1);
 
@@ -261,6 +331,11 @@ export default class LocType {
                         this.multiloc[i] = -1;
                     }
                 }
+            } else {
+                // Unknown opcode: do not spin forever on the same byte (Java would also mis-parse;
+                // log once and abort this definition so map load can proceed).
+                console.error(`LocType ${this.id}: unhandled opcode ${code} — aborting decode`);
+                break;
             }
         }
 

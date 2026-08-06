@@ -2,6 +2,7 @@ import FloType from '#/config/FloType.js';
 import LocType from '#/config/LocType.js';
 
 import ClientLocAnim from '#/dash3d/ClientLocAnim.js';
+import { CollisionFlag } from '#/dash3d/CollisionFlag.js';
 import CollisionMap, { BuildArea } from '#/dash3d/CollisionMap.js';
 import { LocAngle } from '#/dash3d/LocAngle.js';
 import { LocShape } from '#/dash3d/LocShape.js';
@@ -10,6 +11,7 @@ import Model from '#/dash3d/Model.js';
 import type ModelSource from '#/dash3d/ModelSource.js';
 import { TerrainOverlayShape } from '#/dash3d/TerrainOverlayShape.js';
 import World from '#/dash3d/World.js';
+import WorldRegion from '#/dash3d/WorldRegion.js';
 
 import { Colour } from '#/graphics/Colour.js';
 import Pix3D from '#/dash3d/Pix3D.js';
@@ -29,7 +31,10 @@ export default class ClientBuild {
     static ligOff: number = ((Math.random() * 33.0) | 0) - 16;
 
     static lowMem: boolean = true;
+    /** Java `World.field125` — player level filter for lowMem draw/loc cull. */
     static minusedlevel: number = 0;
+    /** Java `World.field113` — min level that received ground/loc during build (for fillBaseLevel). */
+    static minBuiltLevel: number = 99;
 
     private readonly maxTileX: number;
     private readonly maxTileZ: number;
@@ -49,7 +54,16 @@ export default class ClientBuild {
     private readonly tot: Int32Array;
     private readonly mapo: Int32Array[][]; // map occlusion
 
+    /**
+     * Regions from {@link loadGround} (Java method22) that need `flags &= ~UNLOADED`
+     * applied in {@link finishBuild} (collision not available on loadGround signature).
+     */
+    private readonly unloadClearRegions: { xOffset: number; zOffset: number }[] = [];
+
     public constructor(maxTileX: number, maxTileZ: number, groundh: Int32Array[][], mapl: Uint8Array[][]) {
+        // Java World ctor resets field113 = 99
+        ClientBuild.minBuiltLevel = 99;
+
         this.maxTileX = maxTileX;
         this.maxTileZ = maxTileZ;
 
@@ -73,6 +87,10 @@ export default class ClientBuild {
     }
 
     finishBuild(world: World | null, collision: (CollisionMap | null)[]): void {
+        // Java World.method22 clears UNLOADED on each 64×64 land load before decode.
+        // loadGround records regions; apply here so Client.ts call site stays unchanged.
+        this.applyUnloadedClears(collision);
+
         for (let level: number = 0; level < BuildArea.LEVELS; level++) {
             for (let x: number = 0; x < BuildArea.SIZE; x++) {
                 for (let z: number = 0; z < BuildArea.SIZE; z++) {
@@ -198,7 +216,20 @@ export default class ClientBuild {
                             blendTot -= this.tot[dz2];
                         }
 
-                        if (z0 >= 1 && z0 < this.maxTileZ - 1 && (!ClientBuild.lowMem || ((this.mapl[level][x0][z0] & MapFlag.ForceHighDetail) === 0 && this.getVisBelowLevel(level, x0, z0) === ClientBuild.minusedlevel))) {
+                        // Java method15 lowMem gate (&& binds tighter than ||):
+                        // !lowMem || (mapl[0] & LinkBelow) || ((mapl[level] & ForceHighDetail)==0 && getVis==field125)
+                        if (
+                            z0 >= 1 &&
+                            z0 < this.maxTileZ - 1 &&
+                            (!ClientBuild.lowMem ||
+                                (this.mapl[0][x0][z0] & MapFlag.LinkBelow) !== 0 ||
+                                ((this.mapl[level][x0][z0] & MapFlag.ForceHighDetail) === 0 &&
+                                    this.getVisBelowLevel(level, x0, z0) === ClientBuild.minusedlevel))
+                        ) {
+                            if (level < ClientBuild.minBuiltLevel) {
+                                ClientBuild.minBuiltLevel = level;
+                            }
+
                             const t1: number = this.floort1[level][x0][z0] & 0xff;
                             const t2: number = this.floort2[level][x0][z0] & 0xff;
 
@@ -285,9 +316,10 @@ export default class ClientBuild {
                                         overlay = Pix3D.getTextureAverage(texture);
                                         t2Colour = -1;
                                     } else if (flo.colour === Colour.MAGENTA) {
-                                        overlay = 0;
+                                        // Java method15: var94=-2; var92=-1; var93=colourTable[method30(overlayHsl,96)]
                                         t2Colour = -2;
                                         texture = -1;
+                                        overlay = Pix3D.colourTable[ClientBuild.getOCol(flo.overlayHsl, 96)];
                                     } else {
                                         t2Colour = ClientBuild.getTable(flo.hue, flo.saturation, flo.lightness);
                                         overlay = Pix3D.colourTable[ClientBuild.getOCol(flo.overlayHsl, 96)];
@@ -566,7 +598,68 @@ export default class ClientBuild {
         }
     }
 
+    /**
+     * Port of Client-Java `World.method14(arg1=level, arg2=z, arg3=x)`.
+     * Clear 8×8 heights for an empty instanced chunk; bleed edges from adjacent tiles.
+     * Java: field112[arg1][arg3+…][arg2+…] ≡ groundh[level][tileX+…][tileZ+…].
+     */
+    clearChunk(level: number, tileZ: number, tileX: number): void {
+        for (let dx: number = 0; dx < 8; dx++) {
+            for (let dz: number = 0; dz < 8; dz++) {
+                this.groundh[level][tileX + dx][tileZ + dz] = 0;
+            }
+        }
+        if (tileX > 0) {
+            for (let dz: number = 1; dz < 8; dz++) {
+                this.groundh[level][tileX][tileZ + dz] = this.groundh[level][tileX - 1][tileZ + dz];
+            }
+        }
+        if (tileZ > 0) {
+            for (let dx: number = 1; dx < 8; dx++) {
+                this.groundh[level][tileX + dx][tileZ] = this.groundh[level][tileX + dx][tileZ - 1];
+            }
+        }
+        if (tileX > 0 && this.groundh[level][tileX - 1][tileZ] !== 0) {
+            this.groundh[level][tileX][tileZ] = this.groundh[level][tileX - 1][tileZ];
+        } else if (tileZ > 0 && this.groundh[level][tileX][tileZ - 1] !== 0) {
+            this.groundh[level][tileX][tileZ] = this.groundh[level][tileX][tileZ - 1];
+        } else if (tileX > 0 && tileZ > 0 && this.groundh[level][tileX - 1][tileZ - 1] !== 0) {
+            this.groundh[level][tileX][tileZ] = this.groundh[level][tileX - 1][tileZ - 1];
+        }
+    }
+
+    /**
+     * Java method22 / method16: `flags[x][z] &= 0xFEFFFFFF` for tiles with 0 < x,z < 103.
+     */
+    private applyUnloadedClears(collision: (CollisionMap | null)[]): void {
+        for (const region of this.unloadClearRegions) {
+            for (let level: number = 0; level < BuildArea.LEVELS; level++) {
+                const cmap: CollisionMap | null = collision[level];
+                if (!cmap) {
+                    continue;
+                }
+                for (let dx: number = 0; dx < 64; dx++) {
+                    for (let dz: number = 0; dz < 64; dz++) {
+                        const x: number = region.xOffset + dx;
+                        const z: number = region.zOffset + dz;
+                        if (x > 0 && x < 103 && z > 0 && z < 103) {
+                            cmap.flags[CollisionMap.index(x, z)] &= ~CollisionFlag.UNLOADED;
+                        }
+                    }
+                }
+            }
+        }
+        this.unloadClearRegions.length = 0;
+    }
+
+    /**
+     * Port of Client-Java `World.method22` land decode into build area.
+     * Java also takes CollisionMap[] and clears UNLOADED on the 64×64 (tiles in (0,103)).
+     * Collision is not on this signature (Client.ts); region is recorded for finishBuild.
+     */
     loadGround(src: Uint8Array, originX: number, originZ: number, xOffset: number, zOffset: number): void {
+        this.unloadClearRegions.push({ xOffset, zOffset });
+
         const buf: Packet = new Packet(src);
 
         for (let level: number = 0; level < BuildArea.LEVELS; level++) {
@@ -635,60 +728,191 @@ export default class ClientBuild {
         }
     }
 
-    static checkLocations(src: Uint8Array, xOffset: number, zOffset: number): boolean {
+    /**
+     * Port of Client-Java `World.method16(arg0, arg1, arg3, arg4, arg5, arg6, arg7, arg8, arg9)`.
+     * Load one 8×8 ground chunk from a 64×64 land file with rotation into the build area.
+     * Signature order matches Java: (rotation, srcZ, landData, level, srcLevel, destX, collisions, destZ, srcX).
+     */
+    loadGroundChunk(
+        rotation: number,
+        srcZ: number,
+        landData: Uint8Array,
+        level: number,
+        srcLevel: number,
+        destX: number,
+        collisions: (CollisionMap | null)[],
+        destZ: number,
+        srcX: number
+    ): void {
+        for (let dx: number = 0; dx < 8; dx++) {
+            for (let dz: number = 0; dz < 8; dz++) {
+                if (destX + dx > 0 && destX + dx < 103 && destZ + dz > 0 && destZ + dz < 103) {
+                    const cmap: CollisionMap | null = collisions[level];
+                    if (cmap) {
+                        // Java: field1585[x][z] &= 0xFEFFFFFF — clear UNLOADED (0x01000000)
+                        cmap.flags[CollisionMap.index(destX + dx, destZ + dz)] &= ~CollisionFlag.UNLOADED;
+                    }
+                }
+            }
+        }
+
+        const buf: Packet = new Packet(landData);
+        for (let plane: number = 0; plane < 4; plane++) {
+            for (let x: number = 0; x < 64; x++) {
+                for (let z: number = 0; z < 64; z++) {
+                    if (srcLevel === plane && x >= srcX && x < srcX + 8 && z >= srcZ && z < srcZ + 8) {
+                        // Java method31(0, 0, pkt, rotation, destX+localX, level, destZ+localZ)
+                        this.readGroundTile(
+                            0,
+                            0,
+                            buf,
+                            rotation,
+                            destX + WorldRegion.localX(rotation, x & 0x7, z & 0x7),
+                            level,
+                            destZ + WorldRegion.localZ(z & 0x7, x & 0x7, rotation)
+                        );
+                    } else {
+                        this.readGroundTile(0, 0, buf, 0, -1, 0, -1);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Port of Client-Java `World.method31(arg0, arg2, arg3, arg4, arg5, arg6, arg7)`.
+     * Single-tile ground decode from Packet; used by loadGroundChunk (method16).
+     * Arg order: (originX, originZ, buf, rotation, tileX, level, tileZ).
+     * When tileX/tileZ out of [0,104), drains opcodes only (instance skip path).
+     */
+    private readGroundTile(
+        originX: number,
+        originZ: number,
+        buf: Packet,
+        rotation: number,
+        tileX: number,
+        level: number,
+        tileZ: number
+    ): void {
+        if (tileX < 0 || tileX >= 104 || tileZ < 0 || tileZ >= 104) {
+            while (true) {
+                const opcode: number = buf.g1();
+                if (opcode === 0) {
+                    return;
+                }
+                if (opcode === 1) {
+                    buf.g1();
+                    return;
+                }
+                if (opcode <= 49) {
+                    buf.g1();
+                }
+            }
+        }
+
+        this.mapl[level][tileX][tileZ] = 0;
+        while (true) {
+            const opcode: number = buf.g1();
+            if (opcode === 0) {
+                if (level === 0) {
+                    this.groundh[0][tileX][tileZ] = -ClientBuild.perlinNoise(tileX + 932731 + originX, tileZ + 556238 + originZ) * 8;
+                } else {
+                    this.groundh[level][tileX][tileZ] = this.groundh[level - 1][tileX][tileZ] - 240;
+                }
+                return;
+            }
+            if (opcode === 1) {
+                let height: number = buf.g1();
+                if (height === 1) {
+                    height = 0;
+                }
+                if (level === 0) {
+                    this.groundh[0][tileX][tileZ] = -height * 8;
+                } else {
+                    this.groundh[level][tileX][tileZ] = this.groundh[level - 1][tileX][tileZ] - height * 8;
+                }
+                return;
+            }
+            if (opcode <= 49) {
+                this.floort2[level][tileX][tileZ] = buf.g1b();
+                this.floors[level][tileX][tileZ] = ((((opcode - 2) / 4) | 0) << 24) >> 24;
+                // Java: (byte) (var9 - 2 + arg4 & 0x3) — rotation applied to floor rot
+                this.floorr[level][tileX][tileZ] = (((opcode - 2 + rotation) & 0x3) << 24) >> 24;
+            } else if (opcode <= 81) {
+                this.mapl[level][tileX][tileZ] = ((opcode - 49) << 24) >> 24;
+            } else {
+                this.floort1[level][tileX][tileZ] = ((opcode - 81) << 24) >> 24;
+            }
+        }
+    }
+
+    /**
+     * Port of Client-Java `World.method29(xOffset, zOffset, locData)`.
+     * Packet: Java `gsmarts` (unsigned) ≡ TS `gsmart` (names are inverted).
+     *
+     * @param missingOut optional collector of model ids that failed checkModelAll (diag only)
+     */
+    static checkLocations(
+        src: Uint8Array,
+        xOffset: number,
+        zOffset: number,
+        missingOut?: { id: number; locId: number; name: string | null }[]
+    ): boolean {
         let ready = true;
         const buf = new Packet(src);
         let locId = -1;
 
-        while (true) {
-            const deltaId = buf.gsmart();
-            if (deltaId == 0) {
-                break;
+        // label54-style outer loop
+        outer: while (true) {
+            const deltaId = buf.gsmart(); // Java gsmarts
+            if (deltaId === 0) {
+                return ready;
             }
-
             locId += deltaId;
 
             let locPos = 0;
-            let skip = false;
+            let seen = false;
 
             while (true) {
-                if (skip) {
-                    const deltaPos = buf.gsmart();
-                    if (deltaPos == 0) {
-                        break;
-                    }
-
-                    buf.g1();
-                } else {
-                    const deltaPos = buf.gsmart();
-                    if (deltaPos == 0) {
-                        break;
+                while (!seen) {
+                    const deltaPos = buf.gsmart(); // Java gsmarts
+                    if (deltaPos === 0) {
+                        continue outer;
                     }
 
                     locPos += deltaPos - 1;
-
                     const z = locPos & 0x3f;
                     const x = (locPos >> 6) & 0x3f;
-
                     const shape = buf.g1() >> 2;
                     const stx = xOffset + x;
                     const stz = zOffset + z;
 
                     if (stx > 0 && stz > 0 && stx < 103 && stz < 103) {
                         const loc = LocType.list(locId);
-                        if (shape != 22 || !ClientBuild.lowMem || loc.active || loc.forcedecor) {
-                            if (!loc.checkModelAll()) {
-                                ready = false;
+                        // Java: shape != 22 || !lowMem || active || forcedecor
+                        if (shape !== 22 || !ClientBuild.lowMem || loc.active || loc.forcedecor) {
+                            const ok = loc.checkModelAll();
+                            if (!ok && missingOut && loc.model && missingOut.length < 24) {
+                                for (let i = 0; i < loc.model.length && missingOut.length < 24; i++) {
+                                    const mid = loc.model[i] & 0xffff;
+                                    if (!Model.meta[mid] && !missingOut.some(m => m.id === mid)) {
+                                        missingOut.push({ id: mid, locId, name: loc.name });
+                                    }
+                                }
                             }
-
-                            skip = true;
+                            ready = ready && ok;
+                            seen = true;
                         }
                     }
                 }
+
+                const skip = buf.gsmart();
+                if (skip === 0) {
+                    break;
+                }
+                buf.g1();
             }
         }
-
-        return ready;
     }
 
     static prefetchLocations(buf: Packet, od: OnDemand) {
@@ -762,8 +986,81 @@ export default class ClientBuild {
         }
     }
 
+    /**
+     * Port of Client-Java `World.method20(arg0, arg1, arg2, arg4, arg5, arg6, arg7, arg8, arg9, arg10)`.
+     * Load locs from one 8×8 source chunk with rotation into the build area.
+     * Signature order matches Java:
+     * (destLevel, collisions, world, locData, destZ, rotation, srcX, destX, srcZ, srcLevel).
+     * Places via private addLoc (Java method21).
+     */
+    loadLocsChunk(
+        destLevel: number,
+        collisions: (CollisionMap | null)[],
+        world: World | null,
+        locData: Uint8Array,
+        destZ: number,
+        rotation: number,
+        srcX: number,
+        destX: number,
+        srcZ: number,
+        srcLevel: number
+    ): void {
+        const buf: Packet = new Packet(locData);
+        let locId: number = -1;
+
+        while (true) {
+            const deltaId: number = buf.gsmart(); // Java gsmarts
+            if (deltaId === 0) {
+                return;
+            }
+            locId += deltaId;
+
+            let locPos: number = 0;
+            while (true) {
+                const deltaPos: number = buf.gsmart(); // Java gsmarts
+                if (deltaPos === 0) {
+                    break;
+                }
+
+                locPos += deltaPos - 1;
+                const localZ: number = locPos & 0x3f;
+                const localX: number = (locPos >> 6) & 0x3f;
+                const plane: number = locPos >> 12;
+
+                const info: number = buf.g1();
+                const shape: number = info >> 2;
+                const locAngle: number = info & 0x3;
+
+                if (srcLevel === plane && localX >= srcX && localX < srcX + 8 && localZ >= srcZ && localZ < srcZ + 8) {
+                    const loc: LocType = LocType.list(locId);
+                    // Java: field1629 = length, field1655 = width
+                    const stx: number =
+                        destX + WorldRegion.locX(rotation, loc.length, locAngle, localX & 0x7, loc.width, localZ & 0x7);
+                    const stz: number =
+                        destZ + WorldRegion.locZ(loc.width, rotation, localX & 0x7, localZ & 0x7, loc.length, locAngle);
+
+                    if (stx > 0 && stz > 0 && stx < 103 && stz < 103) {
+                        let currentLevel: number = destLevel;
+                        if ((this.mapl[1][stx][stz] & MapFlag.LinkBelow) !== 0) {
+                            currentLevel = destLevel - 1;
+                        }
+
+                        let cmap: CollisionMap | null = null;
+                        if (currentLevel >= 0) {
+                            cmap = collisions[currentLevel];
+                        }
+
+                        // Java method21(world, cmap, stz, destLevel, stx, rotation+locAngle&3, shape, locId)
+                        this.addLoc(destLevel, stx, stz, locId, shape, (rotation + locAngle) & 0x3, world, cmap);
+                    }
+                }
+            }
+        }
+    }
+
     private addLoc(level: number, x: number, z: number, locId: number, shape: number, angle: number, world: World | null, collision: CollisionMap | null): void {
-        if (ClientBuild.lowMem) {
+        // Java method21: lowMem cull only when level-0 has no LinkBelow
+        if (ClientBuild.lowMem && (this.mapl[0][x][z] & MapFlag.LinkBelow) === 0) {
             if ((this.mapl[level][x][z] & MapFlag.ForceHighDetail) !== 0) {
                 return;
             }
@@ -771,6 +1068,10 @@ export default class ClientBuild {
             if (this.getVisBelowLevel(level, x, z) !== ClientBuild.minusedlevel) {
                 return;
             }
+        }
+
+        if (level < ClientBuild.minBuiltLevel) {
+            ClientBuild.minBuiltLevel = level;
         }
 
         let heightSW: number = this.groundh[level][x][z];
@@ -789,11 +1090,12 @@ export default class ClientBuild {
 
         const typecode2: number = ((((angle << 6) + shape) | 0) << 24) >> 24;
 
-        // todo: multiloc support
+        // Java World.method13 / method21: static model only when anim==-1 && multiloc==null;
+        // else ClientLocAnim resolves multiloc at draw (method440) and advances seq.
         if (shape === LocShape.GROUND_DECOR) {
             if (!ClientBuild.lowMem || loc.active || loc.forcedecor) {
                 let model: ModelSource | null;
-                if (loc.anim === -1) {
+                if (loc.anim === -1 && loc.multiloc === null) {
                     model = loc.getModel(22, angle, heightSW, heightSE, heightNE, heightNW, -1);
                 } else {
                     model = new ClientLocAnim(locId, 22, shape, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -807,7 +1109,7 @@ export default class ClientBuild {
             }
         } else if (shape === LocShape.CENTREPIECE_STRAIGHT || shape === LocShape.CENTREPIECE_DIAGONAL) {
             let model: ModelSource | null;
-            if (loc.anim === -1) {
+            if (loc.anim === -1 && loc.multiloc === null) {
                 model = loc.getModel(10, angle, heightSW, heightSE, heightNE, heightNW, -1);
             } else {
                 model = new ClientLocAnim(locId, 10, angle, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -859,7 +1161,7 @@ export default class ClientBuild {
             }
         } else if (shape >= LocShape.ROOF_STRAIGHT) {
             let model: ModelSource | null;
-            if (loc.anim === -1) {
+            if (loc.anim === -1 && loc.multiloc === null) {
                 model = loc.getModel(shape, angle, heightSW, heightSE, heightNE, heightNW, -1);
             } else {
                 model = new ClientLocAnim(locId, shape, angle, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -876,7 +1178,7 @@ export default class ClientBuild {
             }
         } else if (shape === LocShape.WALL_STRAIGHT) {
             let model: ModelSource | null;
-            if (loc.anim === -1) {
+            if (loc.anim === -1 && loc.multiloc === null) {
                 model = loc.getModel(0, angle, heightSW, heightSE, heightNE, heightNW, -1);
             } else {
                 model = new ClientLocAnim(locId, 0, angle, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -931,7 +1233,7 @@ export default class ClientBuild {
             }
         } else if (shape === LocShape.WALL_DIAGONAL_CORNER) {
             let model: ModelSource | null;
-            if (loc.anim === -1) {
+            if (loc.anim === -1 && loc.multiloc === null) {
                 model = loc.getModel(1, angle, heightSW, heightSE, heightNE, heightNW, -1);
             } else {
                 model = new ClientLocAnim(locId, 1, angle, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -959,7 +1261,7 @@ export default class ClientBuild {
 
             let model1: ModelSource | null;
             let model2: ModelSource | null;
-            if (loc.anim === -1) {
+            if (loc.anim === -1 && loc.multiloc === null) {
                 model1 = loc.getModel(2, angle + 4, heightSW, heightSE, heightNE, heightNW, -1);
                 model2 = loc.getModel(2, offset, heightSW, heightSE, heightNE, heightNW, -1);
             } else {
@@ -1005,7 +1307,7 @@ export default class ClientBuild {
             }
         } else if (shape === LocShape.WALL_SQUARE_CORNER) {
             let model: ModelSource | null;
-            if (loc.anim === -1) {
+            if (loc.anim === -1 && loc.multiloc === null) {
                 model = loc.getModel(3, angle, heightSW, heightSE, heightNE, heightNW, -1);
             } else {
                 model = new ClientLocAnim(locId, 3, angle, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1030,7 +1332,7 @@ export default class ClientBuild {
             }
         } else if (shape === LocShape.WALL_DIAGONAL) {
             let model: ModelSource | null;
-            if (loc.anim === -1) {
+            if (loc.anim === -1 && loc.multiloc === null) {
                 model = loc.getModel(shape, angle, heightSW, heightSE, heightNE, heightNW, -1);
             } else {
                 model = new ClientLocAnim(locId, shape, angle, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1067,7 +1369,7 @@ export default class ClientBuild {
 
             if (shape === LocShape.WALLDECOR_STRAIGHT_NOOFFSET) {
                 let model: ModelSource | null;
-                if (loc.anim === -1) {
+                if (loc.anim === -1 && loc.multiloc === null) {
                     model = loc.getModel(4, 0, heightSW, heightSE, heightNE, heightNW, -1);
                 } else {
                     model = new ClientLocAnim(locId, 4, 0, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1084,7 +1386,7 @@ export default class ClientBuild {
                 }
 
                 let model: ModelSource | null;
-                if (loc.anim === -1) {
+                if (loc.anim === -1 && loc.multiloc === null) {
                     model = loc.getModel(4, 0, heightSW, heightSE, heightNE, heightNW, -1);
                 } else {
                     model = new ClientLocAnim(locId, 4, 0, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1105,7 +1407,7 @@ export default class ClientBuild {
                 );
             } else if (shape === LocShape.WALLDECOR_DIAGONAL_OFFSET) {
                 let model: ModelSource | null;
-                if (loc.anim === -1) {
+                if (loc.anim === -1 && loc.multiloc === null) {
                     model = loc.getModel(4, 0, heightSW, heightSE, heightNE, heightNW, -1);
                 } else {
                     model = new ClientLocAnim(locId, 4, 0, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1114,7 +1416,7 @@ export default class ClientBuild {
                 world?.setDecor(level, x, z, y, 0, 0, typecode, model, typecode2, angle, 256);
             } else if (shape === LocShape.WALLDECOR_DIAGONAL_NOOFFSET) {
                 let model: ModelSource | null;
-                if (loc.anim === -1) {
+                if (loc.anim === -1 && loc.multiloc === null) {
                     model = loc.getModel(4, 0, heightSW, heightSE, heightNE, heightNW, -1);
                 } else {
                     model = new ClientLocAnim(locId, 4, 0, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1123,7 +1425,7 @@ export default class ClientBuild {
                 world?.setDecor(level, x, z, y, 0, 0, typecode, model, typecode2, angle, 512);
             } else if (shape === LocShape.WALLDECOR_DIAGONAL_BOTH) {
                 let model: ModelSource | null;
-                if (loc.anim === -1) {
+                if (loc.anim === -1 && loc.multiloc === null) {
                     model = loc.getModel(4, 0, heightSW, heightSE, heightNE, heightNW, -1);
                 } else {
                     model = new ClientLocAnim(locId, 4, 0, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1170,11 +1472,12 @@ export default class ClientBuild {
     }
 
     static changeLocUnchecked(level: number, x: number, z: number, locId: number, shape: number, angle: number, trueLevel: number, levelHeightmap: Int32Array[][], world: World | null, cmap: CollisionMap | null): void {
+        // Java method13 corner order: SW, SE, NE, NW
         let heightSW: number = levelHeightmap[trueLevel][x][z];
         let heightSE: number = levelHeightmap[trueLevel][x + 1][z];
-        let heightNW: number = levelHeightmap[trueLevel][x + 1][z + 1];
-        let heightNE: number = levelHeightmap[trueLevel][x][z + 1];
-        const y: number = (heightSW + heightSE + heightNW + heightNE) >> 2;
+        let heightNE: number = levelHeightmap[trueLevel][x + 1][z + 1];
+        let heightNW: number = levelHeightmap[trueLevel][x][z + 1];
+        const y: number = (heightSW + heightSE + heightNE + heightNW) >> 2;
 
         const loc: LocType = LocType.list(locId);
 
@@ -1186,10 +1489,10 @@ export default class ClientBuild {
 
         const typecode2: number = ((((angle << 6) + shape) | 0) << 24) >> 24;
 
-        // todo: multiloc support
+        // Java World.method13: anim==-1 && multiloc==null → static; else ClientLocAnim
         if (shape === LocShape.GROUND_DECOR) {
             let model: ModelSource | null;
-            if (loc.anim === -1) {
+            if (loc.anim === -1 && loc.multiloc === null) {
                 model = loc.getModel(22, angle, heightSW, heightSE, heightNE, heightNW, -1);
             } else {
                 model = new ClientLocAnim(locId, 22, shape, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1202,7 +1505,7 @@ export default class ClientBuild {
             }
         } else if (shape === LocShape.CENTREPIECE_STRAIGHT || shape === LocShape.CENTREPIECE_DIAGONAL) {
             let model: ModelSource | null;
-            if (loc.anim === -1) {
+            if (loc.anim === -1 && loc.multiloc === null) {
                 model = loc.getModel(10, angle, heightSW, heightSE, heightNE, heightNW, -1);
             } else {
                 model = new ClientLocAnim(locId, 10, angle, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1232,7 +1535,7 @@ export default class ClientBuild {
             }
         } else if (shape >= LocShape.ROOF_STRAIGHT) {
             let model: ModelSource | null;
-            if (loc.anim === -1) {
+            if (loc.anim === -1 && loc.multiloc === null) {
                 model = loc.getModel(shape, angle, heightSW, heightSE, heightNE, heightNW, -1);
             } else {
                 model = new ClientLocAnim(locId, shape, angle, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1245,7 +1548,7 @@ export default class ClientBuild {
             }
         } else if (shape === LocShape.WALL_STRAIGHT) {
             let model: ModelSource | null;
-            if (loc.anim === -1) {
+            if (loc.anim === -1 && loc.multiloc === null) {
                 model = loc.getModel(0, angle, heightSW, heightSE, heightNE, heightNW, -1);
             } else {
                 model = new ClientLocAnim(locId, 0, angle, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1258,7 +1561,7 @@ export default class ClientBuild {
             }
         } else if (shape === LocShape.WALL_DIAGONAL_CORNER) {
             let model: ModelSource | null;
-            if (loc.anim === -1) {
+            if (loc.anim === -1 && loc.multiloc === null) {
                 model = loc.getModel(1, angle, heightSW, heightSE, heightNE, heightNW, -1);
             } else {
                 model = new ClientLocAnim(locId, 1, angle, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1274,7 +1577,7 @@ export default class ClientBuild {
 
             let model1: ModelSource | null;
             let model2: ModelSource | null;
-            if (loc.anim === -1) {
+            if (loc.anim === -1 && loc.multiloc === null) {
                 model1 = loc.getModel(2, angle + 4, heightSW, heightSE, heightNE, heightNW, -1);
                 model2 = loc.getModel(2, offset, heightSW, heightSE, heightNE, heightNW, -1);
             } else {
@@ -1289,7 +1592,7 @@ export default class ClientBuild {
             }
         } else if (shape === LocShape.WALL_SQUARE_CORNER) {
             let model: ModelSource | null;
-            if (loc.anim === -1) {
+            if (loc.anim === -1 && loc.multiloc === null) {
                 model = loc.getModel(3, angle, heightSW, heightSE, heightNE, heightNW, -1);
             } else {
                 model = new ClientLocAnim(locId, 3, angle, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1302,7 +1605,7 @@ export default class ClientBuild {
             }
         } else if (shape === LocShape.WALL_DIAGONAL) {
             let model: ModelSource | null;
-            if (loc.anim === -1) {
+            if (loc.anim === -1 && loc.multiloc === null) {
                 model = loc.getModel(shape, angle, heightSW, heightSE, heightNE, heightNW, -1);
             } else {
                 model = new ClientLocAnim(locId, shape, angle, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1339,7 +1642,7 @@ export default class ClientBuild {
 
             if (shape === LocShape.WALLDECOR_STRAIGHT_NOOFFSET) {
                 let model: ModelSource | null;
-                if (loc.anim === -1) {
+                if (loc.anim === -1 && loc.multiloc === null) {
                     model = loc.getModel(4, 0, heightSW, heightSE, heightNE, heightNW, -1);
                 } else {
                     model = new ClientLocAnim(locId, 4, 0, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1356,7 +1659,7 @@ export default class ClientBuild {
                 }
 
                 let model: ModelSource | null;
-                if (loc.anim === -1) {
+                if (loc.anim === -1 && loc.multiloc === null) {
                     model = loc.getModel(4, 0, heightSW, heightSE, heightNE, heightNW, -1);
                 } else {
                     model = new ClientLocAnim(locId, 4, 0, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1365,7 +1668,7 @@ export default class ClientBuild {
                 world?.setDecor(level, x, z, y, ClientBuild.DECORXOF[angle] * wallwidth, ClientBuild.DECORZOF[angle] * wallwidth, typecode, model, typecode2, angle * 512, ClientBuild.WSHAPE0[angle]);
             } else if (shape === LocShape.WALLDECOR_DIAGONAL_OFFSET) {
                 let model: ModelSource | null;
-                if (loc.anim === -1) {
+                if (loc.anim === -1 && loc.multiloc === null) {
                     model = loc.getModel(4, 0, heightSW, heightSE, heightNE, heightNW, -1);
                 } else {
                     model = new ClientLocAnim(locId, 4, 0, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1374,7 +1677,7 @@ export default class ClientBuild {
                 world?.setDecor(level, x, z, y, 0, 0, typecode, model, typecode2, angle, 256);
             } else if (shape === LocShape.WALLDECOR_DIAGONAL_NOOFFSET) {
                 let model: ModelSource | null;
-                if (loc.anim === -1) {
+                if (loc.anim === -1 && loc.multiloc === null) {
                     model = loc.getModel(4, 0, heightSW, heightSE, heightNE, heightNW, -1);
                 } else {
                     model = new ClientLocAnim(locId, 4, 0, heightSW, heightSE, heightNE, heightNW, loc.anim, true);
@@ -1383,7 +1686,7 @@ export default class ClientBuild {
                 world?.setDecor(level, x, z, y, 0, 0, typecode, model, typecode2, angle, 512);
             } else if (shape === LocShape.WALLDECOR_DIAGONAL_BOTH) {
                 let model: ModelSource | null;
-                if (loc.anim === -1) {
+                if (loc.anim === -1 && loc.multiloc === null) {
                     model = loc.getModel(4, 0, heightSW, heightSE, heightNE, heightNW, -1);
                 } else {
                     model = new ClientLocAnim(locId, 4, 0, heightSW, heightSE, heightNE, heightNW, loc.anim, true);

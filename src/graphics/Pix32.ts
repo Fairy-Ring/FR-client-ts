@@ -100,6 +100,11 @@ export default class Pix32 extends Pix2D {
         Pix2D.setPixels(this.data, this.wi, this.hi);
     }
 
+    /** Java 377 name for `setPixels` → Pix2D bind. */
+    bind(): void {
+        this.setPixels();
+    }
+
     rgbAdjust(r: number, g: number, b: number): void {
         for (let i: number = 0; i < this.data.length; i++) {
             const rgb: number = this.data[i];
@@ -487,7 +492,8 @@ export default class Pix32 extends Pix2D {
                 let srcY: number = leftY;
 
                 for (let j: number = -w; j < 0; j++) {
-                    const rgb = this.data[(srcX >> 16) + (srcY >> 16) * this.owi];
+                    // Java 377 drawRotated indexes with this.wi (not owi)
+                    const rgb = this.data[(srcX >> 16) + (srcY >> 16) * this.wi];
                     if (rgb == 0) {
                         dstX++;
                     } else {

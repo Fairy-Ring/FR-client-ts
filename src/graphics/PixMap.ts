@@ -26,6 +26,11 @@ export default class PixMap {
         Pix2D.setPixels(this.data, this.width, this.height);
     }
 
+    /** Java 377 name for binding the pixmap into Pix2D. */
+    bind(): void {
+        this.setPixels();
+    }
+
     draw(x: number, y: number): void {
         this.prepareCanvas();
         this.ctx.putImageData(this.img, x, y);

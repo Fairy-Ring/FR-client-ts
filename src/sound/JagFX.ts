@@ -4,18 +4,26 @@ import Tone from '#/sound/Tone.js';
 
 import { TypedArray1d } from '#/util/Arrays.js';
 
+/**
+ * Port of Client-Java `jagex2.sound.Wave` (procedural SFX synth).
+ * Tables sized 5000 to match Java field1471/field1472.
+ */
 export default class JagFX {
-    static synth: (JagFX | null)[] = new TypedArray1d(1000, null);
-    static delays: Int32Array = new Int32Array(1000);
+    // Java: Wave.field1471 / field1472 length 5000
+    static synth: (JagFX | null)[] = new TypedArray1d(5000, null);
+    static delays: Int32Array = new Int32Array(5000);
 
-    static waveBytes: Uint8Array = new Uint8Array(22050 * 20);
+    // Java: field1473 = new byte[441000]  (22050 Hz × 20 s)
+    static waveBytes: Uint8Array = new Uint8Array(441000);
     static waveBuffer: Packet = new Packet(this.waveBytes);
 
     tones: (Tone | null)[] = new TypedArray1d(10, null);
     loopBegin: number = 0;
     loopEnd: number = 0;
 
+    /** Java Wave.unpack(Packet, 36135) — dummy arg omitted. */
     static init(buf: Packet): void {
+        // Tone static sine/noise tables are built in Tone's static block (Java Tone.method186)
         while (true) {
             const id = buf.g2();
             if (id === 65535) {
@@ -23,11 +31,12 @@ export default class JagFX {
             }
 
             this.synth[id] = new JagFX();
-            this.synth[id].load(buf);
-            this.delays[id] = this.synth[id].optimiseStart();
+            this.synth[id]!.load(buf);
+            this.delays[id] = this.synth[id]!.optimiseStart();
         }
     }
 
+    /** Java Wave.method479(loops, 6, id) */
     static generate(id: number, loopCount: number): Packet | null {
         const sound = this.synth[id];
         if (sound === null) {
@@ -37,6 +46,7 @@ export default class JagFX {
         return sound.getWave(loopCount);
     }
 
+    /** Java Wave.method480 */
     load(dat: Packet): void {
         for (let tone = 0; tone < 10; tone++) {
             if (dat.g1() !== 0) {
@@ -51,6 +61,7 @@ export default class JagFX {
         this.loopEnd = dat.g2();
     }
 
+    /** Java Wave.method481 — trim leading silence; return delay ticks. */
     optimiseStart(): number {
         let start = 9999999;
         for (let i = 0; i < 10; i++) {
@@ -83,26 +94,31 @@ export default class JagFX {
         return start;
     }
 
+    /** Java Wave.method482 — wrap PCM in WAV. */
     getWave(loopCount: number): Packet {
         const length = this.makeSound(loopCount);
         JagFX.waveBuffer.pos = 0;
-        JagFX.waveBuffer.p4(0x52494646); // "RIFF" ChunkID
-        JagFX.waveBuffer.ip4(length + 36); // ChunkSize
-        JagFX.waveBuffer.p4(0x57415645); // "WAVE" format
-        JagFX.waveBuffer.p4(0x666d7420); // "fmt " chunk id
-        JagFX.waveBuffer.ip4(16); // chunk size
-        JagFX.waveBuffer.ip2(1); // audio format
-        JagFX.waveBuffer.ip2(1); // num channels
-        JagFX.waveBuffer.ip4(22050); // sample rate
-        JagFX.waveBuffer.ip4(22050); // byte rate
-        JagFX.waveBuffer.ip2(1); // block align
-        JagFX.waveBuffer.ip2(8); // bits per sample
+        JagFX.waveBuffer.p4(0x52494646); // "RIFF"
+        JagFX.waveBuffer.ip4(length + 36);
+        JagFX.waveBuffer.p4(0x57415645); // "WAVE"
+        JagFX.waveBuffer.p4(0x666d7420); // "fmt "
+        JagFX.waveBuffer.ip4(16);
+        JagFX.waveBuffer.ip2(1);
+        JagFX.waveBuffer.ip2(1);
+        JagFX.waveBuffer.ip4(22050);
+        JagFX.waveBuffer.ip4(22050);
+        JagFX.waveBuffer.ip2(1);
+        JagFX.waveBuffer.ip2(8);
         JagFX.waveBuffer.p4(0x64617461); // "data"
         JagFX.waveBuffer.ip4(length);
         JagFX.waveBuffer.pos += length;
         return JagFX.waveBuffer;
     }
 
+    /**
+     * Java Wave.method483 — mix tones into waveBytes with clip.
+     * Mix: v = (sample>>8) + (unsigned byte); if (v & 0xFFFFFF00) != 0 then saturate.
+     */
     private makeSound(loopCount: number): number {
         let duration = 0;
         for (let i = 0; i < 10; i++) {
@@ -120,13 +136,14 @@ export default class JagFX {
         let loopStart = ((this.loopBegin * 22050) / 1000) | 0;
         let loopStop = ((this.loopEnd * 22050) / 1000) | 0;
 
-        if (loopStart < 0 || loopStop < 0 || loopStop > sampleCount || loopStart >= loopStop) {
+        // Java: if (var5 < 0 || var5 > var4 || var6 < 0 || var6 > var4 || var5 >= var6)
+        if (loopStart < 0 || loopStart > sampleCount || loopStop < 0 || loopStop > sampleCount || loopStart >= loopStop) {
             loopCount = 0;
         }
 
         let totalSampleCount = sampleCount + (loopStop - loopStart) * (loopCount - 1);
         for (let sample = 44; sample < totalSampleCount + 44; sample++) {
-            JagFX.waveBytes[sample] = -128;
+            JagFX.waveBytes[sample] = 0x80; // Java -128 as unsigned (silence mid)
         }
 
         for (let i = 0; i < 10; i++) {
@@ -137,7 +154,15 @@ export default class JagFX {
                 const samples = tone.generate(toneSampleCount, tone.length);
 
                 for (let sample = 0; sample < toneSampleCount; sample++) {
-                    JagFX.waveBytes[sample + start + 44] += ((samples[sample] >> 8) << 24) >> 24;
+                    const idx = sample + start + 44;
+                    // Java: (sample>>8) + (field1473[idx] & 0xFF)
+                    let v = (samples[sample] >> 8) + (JagFX.waveBytes[idx] & 0xff);
+                    // Java clip: if ((var19 & 0xFFFFFF00) != 0) var19 = ~(var19 >> 31);
+                    // ≥256 → -1 (byte 0xFF); <0 → 0
+                    if ((v & 0xffffff00) !== 0) {
+                        v = ~(v >> 31);
+                    }
+                    JagFX.waveBytes[idx] = v & 0xff;
                 }
             }
         }

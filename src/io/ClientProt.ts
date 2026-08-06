@@ -1,95 +1,106 @@
+// Client → server opcodes for RS2 rev 377.
+// Source of truth: vendor/engine/src/network/game/client/ClientGameProt.ts
+// Cross-checked against vendor/client-java p1isaac sites.
+// Java Protocol.field671 (CLIENTPROT_SCRAMBLE) is unused dead data in 377 Client — not ported.
 export const enum ClientProt {
-    NO_TIMEOUT = 181, // index: 6 - NXT naming
+    NO_TIMEOUT = 40, // engine ClientGameProt.NO_TIMEOUT
 
-    IDLE_TIMER = 145, // index: 30
-    EVENT_MOUSE_CLICK = 224, // index: 31
-    EVENT_MOUSE_MOVE = 229, // index: 32
-    EVENT_APPLET_FOCUS = 149, // index: 33
-    EVENT_CAMERA_POSITION = 193, // index: 35
+    IDLE_TIMER = 202,
+    EVENT_MOUSE_CLICK = 19,
+    EVENT_MOUSE_MOVE = 171,
+    EVENT_APPLET_FOCUS = 187,
+    EVENT_CAMERA_POSITION = 140,
+    EVENT_HAS_WINDOW = 78, // engine only; not used by Client.ts yet
+    EVENT_SYNTH_ERROR = 80, // engine only; not used by Client.ts yet
 
-    ANTICHEAT_OPLOGIC1 = 195, // index: 60
-    ANTICHEAT_OPLOGIC2 = 81, // index: 61
-    ANTICHEAT_OPLOGIC3 = 122, // index: 62
-    ANTICHEAT_OPLOGIC4 = 49, // index: 63
-    ANTICHEAT_OPLOGIC5 = 46, // index: 64
-    ANTICHEAT_OPLOGIC6 = 73, // index: 65
-    ANTICHEAT_OPLOGIC7 = 133, // index: 66
-    ANTICHEAT_OPLOGIC8 = 168, // index: 67
-    ANTICHEAT_OPLOGIC9 = 88, // index: 68
+    ANTICHEAT_OPLOGIC1 = 95,
+    ANTICHEAT_OPLOGIC2 = 165,
+    ANTICHEAT_OPLOGIC3 = 157,
+    ANTICHEAT_OPLOGIC4 = 222,
+    ANTICHEAT_OPLOGIC5 = 126,
+    // 289-era Client.ts still references these; 377 Java/engine only has OPLOGIC1–5.
+    // Values are unused placeholders (not registered on 377 engine) so names keep compiling.
+    ANTICHEAT_OPLOGIC6 = -1,
+    ANTICHEAT_OPLOGIC7 = -1,
+    ANTICHEAT_OPLOGIC8 = -1,
+    ANTICHEAT_OPLOGIC9 = -1,
 
-    ANTICHEAT_CYCLELOGIC1 = 130, // index: 70
-    ANTICHEAT_CYCLELOGIC2 = 154, // index: 71
-    ANTICHEAT_CYCLELOGIC3 = 125, // index: 72
-    ANTICHEAT_CYCLELOGIC4 = 137, // index: 73
-    ANTICHEAT_CYCLELOGIC5 = 85, // index: 74
-    ANTICHEAT_CYCLELOGIC6 = 255, // index: 75
-    ANTICHEAT_CYCLELOGIC7 = 232, // index: 76
+    ANTICHEAT_CYCLELOGIC1 = 244,
+    ANTICHEAT_CYCLELOGIC2 = 168,
+    ANTICHEAT_CYCLELOGIC3 = 197,
+    ANTICHEAT_CYCLELOGIC4 = 173,
+    ANTICHEAT_CYCLELOGIC5 = 248,
+    ANTICHEAT_CYCLELOGIC6 = 22,
+    // 289-era only; not in 377 engine (CYCLELOGIC1–6 only).
+    ANTICHEAT_CYCLELOGIC7 = -1,
 
-    OPOBJ1 = 97, // index: 80 - NXT naming
-    OPOBJ2 = 4, // index: 81 - NXT naming
-    OPOBJ3 = 110, // index: 82 - NXT naming
-    OPOBJ4 = 147, // index: 83 - NXT naming
-    OPOBJ5 = 22, // index: 84 - NXT naming
-    OPOBJT = 241, // index: 88 - NXT naming
-    OPOBJU = 55, // index: 89 - NXT naming
+    OPOBJ1 = 77,
+    OPOBJ2 = 100,
+    OPOBJ3 = 71,
+    OPOBJ4 = 54,
+    OPOBJ5 = 230,
+    OPOBJT = 83,
+    OPOBJU = 211,
 
-    OPNPC1 = 252, // index: 100 - NXT naming
-    OPNPC2 = 21, // index: 101 - NXT naming
-    OPNPC3 = 178, // index: 102 - NXT naming
-    OPNPC4 = 30, // index: 103 - NXT naming
-    OPNPC5 = 247, // index: 104 - NXT naming
-    OPNPCT = 108, // index: 108 - NXT naming
-    OPNPCU = 160, // index: 109 - NXT naming
+    OPNPC1 = 112,
+    OPNPC2 = 67,
+    OPNPC3 = 13,
+    OPNPC4 = 42,
+    OPNPC5 = 8,
+    OPNPCT = 104,
+    OPNPCU = 57,
 
-    OPLOC1 = 10, // index: 120 - NXT naming
-    OPLOC2 = 45, // index: 121 - NXT naming
-    OPLOC3 = 196, // index: 122 - NXT naming
-    OPLOC4 = 53, // index: 123 - NXT naming
-    OPLOC5 = 126, // index: 124 - NXT naming
-    OPLOCT = 218, // index: 128 - NXT naming
-    OPLOCU = 184, // index: 129 - NXT naming
+    OPLOC1 = 181,
+    OPLOC2 = 241,
+    OPLOC3 = 50,
+    OPLOC4 = 136,
+    OPLOC5 = 55,
+    OPLOCT = 210,
+    OPLOCU = 152,
 
-    OPPLAYER1 = 220, // index: 140 - NXT naming
-    OPPLAYER2 = 51, // index: 141 - NXT naming
-    OPPLAYER3 = 13, // index: 142 - NXT naming
-    OPPLAYER4 = 189, // index: 143 - NXT naming
-    OPPLAYER5 = 69, // index: 144 - NXT naming
-    OPPLAYERT = 138, // index: 148 - NXT naming
-    OPPLAYERU = 16, // index: 149 - NXT naming
+    OPPLAYER1 = 245,
+    OPPLAYER2 = 233,
+    OPPLAYER3 = 194,
+    OPPLAYER4 = 116,
+    OPPLAYER5 = 45,
+    OPPLAYERT = 31,
+    OPPLAYERU = 143,
 
-    OPHELD1 = 76, // index: 160 - name based on runescript trigger
-    OPHELD2 = 177, // index: 161 - name based on runescript trigger
-    OPHELD3 = 40, // index: 162 - name based on runescript trigger
-    OPHELD4 = 191, // index: 163 - name based on runescript trigger
-    OPHELD5 = 79, // index: 164 - name based on runescript trigger
-    OPHELDT = 112, // index: 168 - name based on runescript trigger
-    OPHELDU = 200, // index: 169 - name based on runescript trigger
+    OPHELD1 = 203,
+    OPHELD2 = 24,
+    OPHELD3 = 161,
+    OPHELD4 = 228,
+    OPHELD5 = 4,
+    OPHELDT = 36,
+    OPHELDU = 1,
 
-    INV_BUTTON1 = 44, // index: 190 - NXT has "IF_BUTTON1" but for our interface system, this makes more sense
-    INV_BUTTON2 = 111, // index: 191 - NXT has "IF_BUTTON2" but for our interface system, this makes more sense
-    INV_BUTTON3 = 124, // index: 192 - NXT has "IF_BUTTON3" but for our interface system, this makes more sense
-    INV_BUTTON4 = 248, // index: 193 - NXT has "IF_BUTTON4" but for our interface system, this makes more sense
-    INV_BUTTON5 = 227, // index: 194 - NXT has "IF_BUTTON5" but for our interface system, this makes more sense
+    INV_BUTTON1 = 3,
+    INV_BUTTON2 = 177,
+    INV_BUTTON3 = 91,
+    INV_BUTTON4 = 231,
+    INV_BUTTON5 = 158,
 
-    IF_BUTTON = 86, // index: 200 - NXT naming
-    RESUME_PAUSEBUTTON = 166, // index: 201 - NXT naming
-    CLOSE_MODAL = 93, // index: 202 - NXT naming
-    RESUME_P_COUNTDIALOG = 180, // index: 203 - NXT naming
-    TUT_CLICKSIDE = 146, // index: 204
+    IF_BUTTON = 79,
+    RESUME_PAUSEBUTTON = 226,
+    CLOSE_MODAL = 110,
+    RESUME_P_COUNTDIALOG = 75,
+    TUT_CLICKSIDE = 119,
+    RESUME_P_NAMEDIALOG = 206, // engine only; not used by Client.ts yet
 
-    MAP_BUILD_COMPLETE = 214, // index: 241 - NXT naming
-    MOVE_OPCLICK = 67, // index: 242 - comes with OP packets, name based on other MOVE packets
-    SEND_SNAPSHOT = 94, // index: 243 - NXT naming
-    MOVE_MINIMAPCLICK = 236, // index: 244 - NXT naming
-    INV_BUTTOND = 253, // index: 245 - NXT has "IF_BUTTOND" but for our interface system, this makes more sense
-    IGNORELIST_DEL = 251, // index: 246 - NXT naming
-    IGNORELIST_ADD = 192, // index: 247 - NXT naming
-    IDK_SAVEDESIGN = 27, // index: 248 - based on function name
-    CHAT_SETMODE = 161, // index: 249 - NXT naming
-    MESSAGE_PRIVATE = 107, // index: 250 - NXT naming
-    FRIENDLIST_DEL = 203, // index: 251 - NXT naming
-    FRIENDLIST_ADD = 235, // index: 252 - NXT naming
-    CLIENT_CHEAT = 34, // index: 253 - NXT naming
-    MESSAGE_PUBLIC = 156, // index: 254 - NXT naming
-    MOVE_GAMECLICK = 234, // index: 255 - NXT naming
+    MAP_BUILD_COMPLETE = 6,
+    MOVE_OPCLICK = 247,
+    // engine name: REPORT_ABUSE (todo rename → SEND_SNAPSHOT); Client.ts uses SEND_SNAPSHOT
+    SEND_SNAPSHOT = 184,
+    MOVE_MINIMAPCLICK = 213,
+    INV_BUTTOND = 123,
+    IGNORELIST_DEL = 160,
+    IGNORELIST_ADD = 217,
+    IDK_SAVEDESIGN = 163,
+    CHAT_SETMODE = 176,
+    MESSAGE_PRIVATE = 227,
+    FRIENDLIST_DEL = 141,
+    FRIENDLIST_ADD = 120,
+    CLIENT_CHEAT = 56,
+    MESSAGE_PUBLIC = 49,
+    MOVE_GAMECLICK = 28,
 };

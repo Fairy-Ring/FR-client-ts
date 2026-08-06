@@ -5,7 +5,9 @@ import JagFile from '#/io/JagFile.js';
 import { Int32Array2d, TypedArray1d } from '#/util/Arrays.js';
 
 export default class Pix3D extends Pix2D {
-    static lowMem: boolean = false;
+    /** Java 377 default `lowMem = true` (overridden by Client from memory budget). */
+    static lowMem: boolean = true;
+    /** Java 377 `jagged` — jagged colour steps when true. */
     static lowDetail: boolean = true;
 
     static divTable: Int32Array = new Int32Array(512);
@@ -21,6 +23,7 @@ export default class Pix3D extends Pix2D {
     static texCycle: Int32Array = new Int32Array(50);
     static texPal: (Int32Array | null)[] = new TypedArray1d(50, null);
     static numTextures: number = 0;
+    /** Java 377 `centerX` / `centerY` — kept as origin* for existing TS call sites. */
     static originX: number = 0;
     static originY: number = 0;
     static texelPool: (Int32Array | null)[] | null = null;
@@ -28,8 +31,10 @@ export default class Pix3D extends Pix2D {
     private static opaque: boolean = false;
 
     static cycle: number = 0;
+    /** Java 377 `lineOffset` — kept as scanline for existing TS call sites. */
     static scanline: Int32Array = new Int32Array();
     static hclip: boolean = false;
+    /** Java 377 `field1593` alpha for flat/gouraud. */
     static trans: number = 0;
 
     static {
@@ -49,6 +54,10 @@ export default class Pix3D extends Pix2D {
         }
     }
 
+    /**
+     * Java 377 `method545` / 289 `setRenderClipping` — rebuild line offsets from current Pix2D size.
+     * Kept at dash3d/Pix3D (not graphics/) because Client/Model/ObjType already import that path.
+     */
     static setRenderClipping(): void {
         this.scanline = new Int32Array(Pix2D.height);
         for (let y: number = 0; y < Pix2D.height; y++) {
@@ -58,6 +67,10 @@ export default class Pix3D extends Pix2D {
         this.originY = (Pix2D.height / 2) | 0;
     }
 
+    /**
+     * Java 377 `init3D(height, width)` with TS arg order `(width, height)` matching existing call sites
+     * (`Pix3D.setClipping(512, 334)` ≡ Java `init3D(334, 512)`).
+     */
     static override setClipping(width: number, height: number): void {
         this.scanline = new Int32Array(height);
         for (let y: number = 0; y < height; y++) {
@@ -65,6 +78,37 @@ export default class Pix3D extends Pix2D {
         }
         this.originX = (width / 2) | 0;
         this.originY = (height / 2) | 0;
+    }
+
+    /** Java 377 name: `init3D(height, width)`. */
+    static init3D(height: number, width: number): void {
+        this.setClipping(width, height);
+    }
+
+    /** Java 377 name: `method545()` ≡ rebuild from Pix2D bind. */
+    static method545(): void {
+        this.setRenderClipping();
+    }
+
+    /** Java 377 `unload` — null out tables (Client teardown). */
+    static unload(): void {
+        // Int32Array tables are re-created empty so static consumers never see null
+        this.divTable = new Int32Array(512);
+        this.divTable2 = new Int32Array(2048);
+        this.sinTable = new Int32Array(2048);
+        this.cosTable = new Int32Array(2048);
+        this.scanline = new Int32Array();
+        this.textures = new TypedArray1d(50, null);
+        this.texTrans = new TypedArray1d(50, false);
+        this.texAverage = new Int32Array(50);
+        this.texelPool = null;
+        this.activeTexels = new TypedArray1d(50, null);
+        this.texCycle = new Int32Array(50);
+        this.colourTable = new Int32Array(65536);
+        this.texPal = new TypedArray1d(50, null);
+        this.numTextures = 0;
+        this.poolSize = 0;
+        this.cycle = 0;
     }
 
     static clearTexels(): void {
@@ -106,6 +150,11 @@ export default class Pix3D extends Pix2D {
                 // empty
             }
         }
+    }
+
+    /** Java 377 `getTextureAverageRgb`. */
+    static getTextureAverageRgb(id: number): number {
+        return this.getTextureAverage(id);
     }
 
     static getTextureAverage(id: number): number {

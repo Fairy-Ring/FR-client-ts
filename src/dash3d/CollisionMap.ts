@@ -25,6 +25,10 @@ export default class CollisionMap {
         this.reset();
     }
 
+    /**
+     * Java 377 CollisionMap.method532 — border 0xFFFFFF, interior UNLOADED (0x1000000).
+     * 289 reset interior to 0; land load (World.method22/16) clears UNLOADED with &= ~0x1000000.
+     */
     reset(): void {
         for (let x: number = 0; x < this.sizeX; x++) {
             for (let z: number = 0; z < this.sizeZ; z++) {
@@ -32,7 +36,7 @@ export default class CollisionMap {
                 if (x === 0 || z === 0 || x === this.sizeX - 1 || z === this.sizeZ - 1) {
                     this.flags[index] = CollisionFlag._BOUNDS;
                 } else {
-                    this.flags[index] = CollisionFlag._OPEN;
+                    this.flags[index] = CollisionFlag.UNLOADED;
                 }
             }
         }
@@ -42,8 +46,12 @@ export default class CollisionMap {
         this.flags[CollisionMap.index(tileX - this.startX, tileZ - this.startZ)] |= CollisionFlag.WR_GRND;
     }
 
+    /**
+     * Java CollisionMap.method540 — `flags &= 0xDFFFFF` clears WR_GRND (and bits ≥24).
+     * Equivalent walk effect: clear WR_GRND; high-bit clear matches Java mask width.
+     */
     unblockGround(tileX: number, tileZ: number): void {
-        this.flags[CollisionMap.index(tileX - this.startX, tileZ - this.startZ)] &= ~CollisionFlag.WR_GRND;
+        this.flags[CollisionMap.index(tileX - this.startX, tileZ - this.startZ)] &= 0xdfffff;
     }
 
     addLoc(tileX: number, tileZ: number, sizeX: number, sizeZ: number, angle: LocAngle, blockrange: boolean): void {

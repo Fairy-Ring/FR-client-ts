@@ -71,11 +71,22 @@ export const enum ClientCode {
     CC_REPORT_RULE12 = 612,
     CC_MOD_MUTE = 613,
 
-    //// welcome_screen/welcome_screen2
-    CC_LAST_LOGIN_INFO = 650, // has recovery questions
-    CC_UNREAD_MESSAGES = 651,
+    /**
+     * Welcome-screen / last-login diary — 377 Java Client.clientComponent uses 660–668.
+     * Content `inter_313.if` matches these (not the 289-era 650–655 set).
+     * 650/655 remain unpack-time layer markers on some archives (IfType.clientCode650Layer).
+     */
+    CC_LAST_LOGIN_INFO = 660,
+    CC_RECOVERY_QUESTIONS = 661,
+    CC_UNREAD_MESSAGES = 662,
+    CC_PASSWORD_CHANGE = 663,
+    CC_MEMBERS_CREDIT = 665,
+    CC_MEMBERS_HELP = 667,
+    CC_RECOVERY_HELP = 668,
+
+    /** @deprecated 289-era aliases — kept so old references compile; not used by 377 welcome. */
+    CC_LAST_LOGIN_INFO2 = 655,
     CC_RECOVERY1 = 652,
     CC_RECOVERY2 = 653,
     CC_RECOVERY3 = 654,
-    CC_LAST_LOGIN_INFO2 = 655, // has no recovery questions
-};
+}

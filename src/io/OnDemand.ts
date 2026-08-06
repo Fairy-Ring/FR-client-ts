@@ -10,15 +10,32 @@ import OnDemandProvider from '#/io/OnDemandProvider.js';
 import OnDemandRequest from '#/io/OnDemandRequest.js';
 import Packet from '#/io/Packet.js';
 
+/**
+ * OnDemand coordinator — oracle: Client-Java 377 `jagex2.io.OnDemand` (ZPGPWCCV).
+ * Unpack / map_index / request / validate / send framing match 377.
+ * Transport is browser-only (Worker + WS + IndexedDB) instead of Java FileStream/Socket thread.
+ */
 export default class OnDemand extends OnDemandProvider {
     versions: number[][] = [];
     crcs: number[][] = [];
+    /** Java 377 `models` (model_index flags). */
     modelUse: number[] = [];
     mapIndex: number[] = [];
     mapLand: number[] = [];
     mapLoc: number[] = [];
+    /**
+     * map_index free/members flag byte (g1).
+     * Java 377 name: `mapMembers`. 289 name: `mapFree`.
+     * Prefetch when `members || mapFree[i] !== 0` (same as Java).
+     */
     mapFree: number[] = [];
+    /** Alias for Java 377 field name. */
+    get mapMembers(): number[] {
+        return this.mapFree;
+    }
+    /** Java 377 `animIndex`. */
     animFrameIndex: number[] = [];
+    /** Java 377 `midiIndex`. */
     midiJingle: number[] = [];
     running: boolean = true;
     app: Client;
@@ -35,6 +52,7 @@ export default class OnDemand extends OnDemandProvider {
     constructor(versionlist: JagFile, app: Client) {
         super();
 
+        // Java OnDemand.unpack — same versionlist file order and strides
         const version: string[] = ['model_version', 'anim_version', 'midi_version', 'map_version'];
         for (let i = 0; i < 4; i++) {
             const data = versionlist.read(version[i]);
@@ -83,6 +101,7 @@ export default class OnDemand extends OnDemandProvider {
             }
         }
 
+        // map_index: 7 bytes per entry — g2 index, g2 land, g2 loc, g1 members/free
         data = versionlist.read('map_index');
         if (data) {
             const count = data.length / 7;
@@ -235,7 +254,18 @@ export default class OnDemand extends OnDemandProvider {
             return req;
         }
 
-        req.data = gunzipSync(req.data.subarray(0, req.data.length - 2));
+        try {
+            // Java OnDemand.cycle: GZIPInputStream over full buffer (stops at gzip end;
+            // 2-byte version trailer is ignored). fflate may reject trailing bytes, so strip first.
+            req.data = gunzipSync(req.data.subarray(0, req.data.length - 2));
+        } catch (e) {
+            console.error(
+                `[onDemand] gunzip failed archive=${req.archive} file=${req.file} len=${req.data.length}`,
+                e
+            );
+            // Java throws RuntimeException("error unzipping"); browser: null data
+            req.data = null;
+        }
         return req;
     }
 

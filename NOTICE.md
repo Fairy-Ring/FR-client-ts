@@ -14,7 +14,7 @@ LostCityRS/Client-TS@bc4751da0748704307eef9e186015b08834fccf7  (branch 289)
 It is a **derivation** of open Lost City work under its license, with our own residual process and purity fence.  
 **Pinned details + verify commands:** [PROVENANCE.md](PROVENANCE.md).
 
-**Not affiliated with, endorsed by, or representative of** Lost City / LostCityRS, rs2b2t / N64Jive (unless they adopt material), or Jagex Ltd.
+**Not** official Lost City / LostCityRS and **not** endorsed by Jagex Ltd. Related bot/rs2b2t tooling is credited separately; this tree is not their product.
 
 Do **not** present this repository as official Lost City Client-TS.
 

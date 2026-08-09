@@ -1,10 +1,10 @@
-# rs2-r377 — Client-TS
+# Fairy Ring — Client-TS
 
 **Browser client** for **RuneScape revision 377** (~2 May 2006): a careful **1:1 port** of **Client-Java 377** to TypeScript.
 
 | | |
 |--|--|
-| **Public name** | **rs2-r377** (client-ts tree) |
+| **Public brand** | **Fairy Ring** (client-ts tree) |
 | **Branch** | `rs2-r377` |
 | **Upstream lineage** | [LostCityRS/Client-TS](https://github.com/LostCityRS/Client-TS) **`289`** @ `bc4751da0748704307eef9e186015b08834fccf7` · Java oracle [Client-Java](https://github.com/LostCityRS/Client-Java) |
 | **Provenance** | [PROVENANCE.md](PROVENANCE.md) — full SHA pin + history note |

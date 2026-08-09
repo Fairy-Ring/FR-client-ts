@@ -53,6 +53,11 @@ Exact steps depend on Engine-TS / workspace pack pipeline. Typical flow:
 
 See workspace runbooks for isolation ports and headed harness policy.
 
+
+## Completeness disclaimer
+
+We do **not** claim this tree **is** authentic, original, or complete. Work is ongoing under an accuracy bar; humans and agents make mistakes. **Good-faith contributions from all** are welcome and will not be dismissed without clear rationale (see companion workspace `CONTRIBUTING.md`).
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE) as upstream.  

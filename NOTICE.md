@@ -7,7 +7,12 @@ Attribution and provenance for this **client-ts** fork.
 **rs2-r377 Client-TS** is an independent preservation / engineering fork of
 [LostCityRS/Client-TS](https://github.com/LostCityRS/Client-TS), following a **1:1** relationship to period **Client-Java** 377 behaviour where applicable.
 
-It is a **derivation** of open Lost City work under its license, with our own residual process and purity fence.
+```text
+LostCityRS/Client-TS@bc4751da0748704307eef9e186015b08834fccf7  (branch 289)
+```
+
+It is a **derivation** of open Lost City work under its license, with our own residual process and purity fence.  
+**Pinned details + verify commands:** [PROVENANCE.md](PROVENANCE.md).
 
 **Not affiliated with, endorsed by, or representative of** Lost City / LostCityRS, rs2b2t / N64Jive (unless they adopt material), or Jagex Ltd.
 

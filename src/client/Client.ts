@@ -7094,11 +7094,17 @@ export class Client extends GameShell {
                 const comId: number = this.in.g2_alt3();
                 const text = this.in.gjstr();
 
-                if (IfType.get(comId)) {
-                    IfType.get(comId)!.text = text;
+                const com = IfType.get(comId);
+                if (com) {
+                    com.text = text;
 
-                    if (IfType.get(comId)!.layerId === this.sideIcon[this.activeIcon]) {
+                    // Java only flags sidebar redraw; chat mesbox needs redrawChat too
+                    // (open-then-settext after IF_OPENCHAT must repaint chatback).
+                    if (com.layerId === this.sideIcon[this.activeIcon]) {
                         this.redrawSide = true;
+                    }
+                    if (com.layerId === this.chatModalId || this.chatModalId === comId) {
+                        this.redrawChat = true;
                     }
                 }
 

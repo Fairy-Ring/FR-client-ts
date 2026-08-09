@@ -8,7 +8,7 @@
 | **Branch** | `rs2-r377` |
 | **Upstream lineage** | [LostCityRS/Client-TS](https://github.com/LostCityRS/Client-TS) **`289`** @ `bc4751da0748704307eef9e186015b08834fccf7` · Java oracle [Client-Java](https://github.com/LostCityRS/Client-Java) |
 | **Provenance** | [PROVENANCE.md](PROVENANCE.md) — full SHA pin + history note |
-| **Companion workspace** | [rs2-r377 workspace](https://github.com/acfrazier/LC-rs2-r377-workspace) |
+| **Companion workspace** | [Fairy Ring workspace](https://github.com/acfrazier/fairy-ring-workspace) |
 
 ## Derived from Lost City — not Lost City
 
@@ -35,7 +35,7 @@ Client-TS **289** (or other branches) is **not** behavioural truth for 377 work.
 
 ## Launch-together
 
-Intended to go **public with** content, engine, and workspace under the **rs2-r377** brand (GitHub names may still use legacy `LC-rs2-*` until rename at flip). Visibility flips only on operator call.
+Intended to go **public with** content, engine, and workspace under the **Fairy Ring** brand (`FR-content` / `FR-engine` / `FR-client-ts` / `fairy-ring-workspace`). Visibility flips only on operator call.
 
 | Companion | Role |
 |-----------|------|
@@ -71,4 +71,4 @@ See [NOTICE.md](NOTICE.md).
 - Lost City forum: https://lostcity.rs/
 
 **Never push experiment work to `LostCityRS/*` without explicit permission.**  
-Private backup remote (operator): `private` → `acfrazier/LC-rs2-r377-client-ts` (rename target: `rs2-r377-client-ts` at public flip).
+Private backup remote (operator): `private` → `acfrazier/FR-client-ts`.

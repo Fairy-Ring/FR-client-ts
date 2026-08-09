@@ -7,3 +7,29 @@ private.pem
 public.pem
 
 .idea
+
+# --- OS / editor / junk (Fairy Ring hygiene) ---
+.DS_Store
+**/.DS_Store
+._*
+**/__MACOSX/
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.swp
+*.swo
+*~
+*.bak
+*.orig
+*.tmp
+*.temp
+.idea/
+.vscode/
+*.code-workspace
+.fleet/
+.history/
+*.sublime-project
+*.sublime-workspace
+

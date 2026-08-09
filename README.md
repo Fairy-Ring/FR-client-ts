@@ -33,15 +33,15 @@ Development of this fork **uses AI tools and coding agents**. Humans own product
 
 Client-TS **289** (or other branches) is **not** behavioural truth for 377 work.
 
-## Launch-together
+## Companion repos
 
-Intended to go **public with** content, engine, and workspace under the **Fairy Ring** brand (`FR-content` / `FR-engine` / `FR-client-ts` / `fairy-ring-workspace`). Visibility flips only on operator call.
+Public under **Fairy Ring** (same brand family; separate remotes):
 
-| Companion | Role |
-|-----------|------|
-| **Engine** | Serves protocol + packs content |
-| **Content** | Period scripts/configs |
-| **Workspace** | Docs, harness, residual proofs |
+| Repo | Role |
+|------|------|
+| [FR-engine](https://github.com/Fairy-Ring/FR-engine) | Protocol + pack/serve |
+| [FR-content](https://github.com/Fairy-Ring/FR-content) | Period scripts/configs |
+| [fairy-ring-workspace](https://github.com/Fairy-Ring/fairy-ring-workspace) | Docs, harness toys, residual bar |
 
 ## Build / run (high level)
 
@@ -71,4 +71,4 @@ See [NOTICE.md](NOTICE.md).
 - Lost City forum: https://lostcity.rs/
 
 **Never push experiment work to `LostCityRS/*` without explicit permission.**  
-Private backup remote (operator): `private` → `acfrazier/FR-client-ts`.
+Push remote (operator): `private` → [Fairy-Ring/FR-client-ts](https://github.com/Fairy-Ring/FR-client-ts).

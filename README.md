@@ -8,7 +8,7 @@
 | **Branch** | `rs2-r377` |
 | **Upstream lineage** | [LostCityRS/Client-TS](https://github.com/LostCityRS/Client-TS) **`289`** @ `bc4751da0748704307eef9e186015b08834fccf7` · Java oracle [Client-Java](https://github.com/LostCityRS/Client-Java) |
 | **Provenance** | [PROVENANCE.md](PROVENANCE.md) — full SHA pin + history note |
-| **Companion workspace** | [Fairy Ring workspace](https://github.com/acfrazier/fairy-ring-workspace) |
+| **Companion workspace** | [Fairy Ring workspace](https://github.com/Fairy-Ring/fairy-ring-workspace) |
 
 ## Derived from Lost City — not Lost City
 

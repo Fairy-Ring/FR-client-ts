@@ -9,7 +9,6 @@
  * Bank: SCC1_Florestan.sf2 (Decision 012). See docs/decisions/012-*.md.
  */
 import type { MidiBackend } from '#/sound/MidiBackend.js';
-import { midivolToGain } from '#/sound/MidiBackend.js';
 import { SpessaBackend } from '#/sound/backends/spessaBackend.js';
 
 const DEFAULT_MIDIVOL = 96;
@@ -58,11 +57,12 @@ async function loadFlorestan(b: MidiBackend): Promise<boolean> {
     return false;
 }
 
-function applyGain(midivolJava: number): void {
+/** Java signlink → midiPlayer.setVolume(0, midivol) — CC injection inside backend. */
+function applyMidivol(midivolJava: number): void {
     if (!backend) {
         return;
     }
-    backend.setGain(midivolToGain(midivolJava));
+    backend.setMidivol(midivolJava);
 }
 
 function signlinkPlayMidi(): void {
@@ -88,11 +88,12 @@ function signlinkPlayMidi(): void {
             // Java: after fade-out, start new sequence at midiFadeVol (0) then ramp midivol
             midiFadingOut = false;
             midiFadeVol = 0;
-            applyGain(0);
+            applyMidivol(0);
+            // Do not re-apply 0 when play() resolves — that races the fade-in ramp to mute
             void backend.play(mid, loop).catch(onErr);
         } else {
-            applyGain(midivol);
-            void backend.play(mid, loop).catch(onErr);
+            applyMidivol(midivol);
+            void backend.play(mid, loop).then(() => applyMidivol(midivol)).catch(onErr);
         }
     } catch (e) {
         console.warn('[midi] play failed', e);
@@ -108,7 +109,7 @@ function audioLoop(): void {
         if (midiFadeVol > midivol) {
             midiFadeVol = midivol;
         }
-        applyGain(midiFadeVol);
+        applyMidivol(midiFadeVol);
         if (midiFadeVol === midivol) {
             midiFadingIn = false;
         }
@@ -117,7 +118,7 @@ function audioLoop(): void {
         if (midiFadeVol < 0) {
             midiFadeVol = 0;
         }
-        applyGain(midiFadeVol);
+        applyMidivol(midiFadeVol);
         if (midiFadeVol === 0) {
             midiFadingOut = false;
             midiFadingIn = true;
@@ -128,7 +129,7 @@ function audioLoop(): void {
         if (midiCmd === 'stop') {
             backend.stop();
         } else if (midiCmd === 'voladjust') {
-            applyGain(midivol);
+            applyMidivol(midivol);
         } else if (midiCmd === 'play') {
             signlinkPlayMidi();
         }
@@ -144,12 +145,12 @@ async function init(): Promise<void> {
     if (!ok) {
         console.warn('[midi] continuing without soundfont — plays will fail until bank loads');
     }
-    applyGain(DEFAULT_MIDIVOL);
+    applyMidivol(DEFAULT_MIDIVOL);
     if (!loopHandle) {
         loopHandle = setInterval(audioLoop, AUDIO_LOOP_MS);
     }
     ready = true;
-    console.info('[midi] Jagex 377 control plane ready (Spessa + Florestan, midivol scale)');
+    console.info('[midi] Jagex 377 control plane ready (Spessa + Florestan, master midivol)');
 
     while (earlyQueue.length) {
         const item = earlyQueue.shift()!;

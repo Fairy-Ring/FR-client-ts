@@ -73,7 +73,7 @@ if (!fs.existsSync('out')) {
     fs.mkdirSync('out');
 }
 
-// tinymidipcm.wasm not shipped — product MIDI is Spessa (Decision 012).
+// Product MIDI is Spessa (npm pin; Decision 012). No tinymidipcm submodule/wasm.
 
 const args = process.argv.slice(2);
 const prod = args[0] !== 'dev';

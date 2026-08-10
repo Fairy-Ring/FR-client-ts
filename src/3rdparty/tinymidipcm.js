@@ -176,37 +176,109 @@ class TinyMidiPCM {
 
     await tinyMidiPCM.init();
 
-    // Soft-fail if soundfont is missing so login is not an uncaught reject.
-    // Try beside the bundle (client.js or harness-client.js), then fixed public paths.
-    try {
+    /** @type {{ name: string, bytes: number } | null} */
+    let soundfontInfo = null;
+    /** @type {{ buffer: Uint8Array, name: string } | null} */
+    let pendingSoundfont = null;
+    let midiGlueReady = false;
+
+    /**
+     * Apply SF2 bytes to the synth (stops current MIDI render).
+     * Webpage shell uses this for user-upload testing (no in-game UI).
+     * @param {ArrayBuffer|Uint8Array} buffer
+     * @param {string} [name]
+     */
+    function applySoundfontBuffer(buffer, name) {
+        const u8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+        if (u8.byteLength < 1000) {
+            throw new Error(`[tinymidipcm] soundfont too small (${u8.byteLength} bytes)`);
+        }
+        // RIFF / sfbk sanity (optional soft check)
+        if (u8.length >= 4) {
+            const tag = String.fromCharCode(u8[0], u8[1], u8[2], u8[3]);
+            if (tag !== 'RIFF') {
+                console.warn(`[tinymidipcm] soundfont does not start with RIFF (got ${JSON.stringify(tag)}) — trying anyway`);
+            }
+        }
+        // Only stop playback after glue is fully initialized (flushInterval etc. exist).
+        if (midiGlueReady) {
+            stop();
+        }
+        tinyMidiPCM.setSoundfont(u8);
+        soundfontInfo = { name: name || 'upload', bytes: u8.byteLength };
+        console.info(`[tinymidipcm] soundfont loaded: ${soundfontInfo.name} (${soundfontInfo.bytes} bytes)`);
+        return soundfontInfo;
+    }
+
+    async function loadDefaultSoundfont() {
+        // Soft-fail if soundfont is missing so login is not an uncaught reject.
+        // Try beside the bundle (client.js or harness-client.js), then fixed public paths.
         const sfUrls = [
             new URL('SCC1_Florestan.sf2', import.meta.url).href,
             '/client/SCC1_Florestan.sf2',
             '/harness/SCC1_Florestan.sf2'
         ];
-        let loaded = false;
         for (const url of sfUrls) {
             try {
                 const soundfontRes = await fetch(url);
                 if (!soundfontRes.ok) continue;
                 const soundfontBuffer = new Uint8Array(await soundfontRes.arrayBuffer());
                 if (soundfontBuffer.byteLength < 1000) continue;
-                tinyMidiPCM.setSoundfont(soundfontBuffer);
-                console.info(`[tinymidipcm] soundfont loaded from ${url} (${soundfontBuffer.byteLength} bytes)`);
-                loaded = true;
-                break;
+                applySoundfontBuffer(soundfontBuffer, `default:${url}`);
+                return true;
             } catch {
                 /* try next */
             }
         }
-        if (!loaded) {
-            console.warn(
-                '[tinymidipcm] SCC1_Florestan.sf2 not found beside bundle or at /client|/harness — MIDI disabled'
-            );
-        }
-    } catch (err) {
-        console.warn('[tinymidipcm] failed to load SCC1_Florestan.sf2; MIDI disabled', err);
+        console.warn(
+            '[tinymidipcm] SCC1_Florestan.sf2 not found beside bundle or at /client|/harness — MIDI disabled until upload'
+        );
+        return false;
     }
+
+    try {
+        await loadDefaultSoundfont();
+    } catch (err) {
+        console.warn('[tinymidipcm] failed to load default soundfont; MIDI disabled until upload', err);
+    }
+
+    // Shell may call setSoundfont before this IIFE finishes — drain queue.
+    if (pendingSoundfont) {
+        try {
+            applySoundfontBuffer(pendingSoundfont.buffer, pendingSoundfont.name);
+        } catch (err) {
+            console.warn('[tinymidipcm] pending upload failed', err);
+        }
+        pendingSoundfont = null;
+    }
+    midiGlueReady = true;
+
+    /**
+     * Webpage API: replace bank from user-selected .sf2 (session only).
+     * @param {ArrayBuffer|Uint8Array} buffer
+     * @param {string} [name]
+     * @returns {Promise<{ name: string, bytes: number }>}
+     */
+    window._tinyMidiSetSoundfont = async (buffer, name) => {
+        const u8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+        if (!midiGlueReady) {
+            pendingSoundfont = { buffer: u8, name: name || 'upload' };
+            return { name: pendingSoundfont.name, bytes: u8.byteLength, pending: true };
+        }
+        return applySoundfontBuffer(u8, name || 'upload');
+    };
+
+    /** Webpage API: restore default Florestan paths. */
+    window._tinyMidiResetSoundfont = async () => {
+        if (!midiGlueReady) {
+            pendingSoundfont = null;
+            return { ok: false, reason: 'not-ready' };
+        }
+        const ok = await loadDefaultSoundfont();
+        return { ok, info: soundfontInfo };
+    };
+
+    window._tinyMidiGetSoundfontInfo = () => soundfontInfo;
 
     function flush() {
         if (!window.audioContext || !samples.length) {
@@ -390,4 +462,19 @@ export function stopMidi(fade) {
     if (window._tinyMidiStop) {
         window._tinyMidiStop(fade);
     }
+}
+
+/** Webpage shell: upload SF2 (session). See window._tinyMidiSetSoundfont. */
+export function setMidiSoundfont(buffer, name) {
+    if (window._tinyMidiSetSoundfont) {
+        return window._tinyMidiSetSoundfont(buffer, name);
+    }
+    return Promise.reject(new Error('MIDI glue not ready'));
+}
+
+export function resetMidiSoundfont() {
+    if (window._tinyMidiResetSoundfont) {
+        return window._tinyMidiResetSoundfont();
+    }
+    return Promise.reject(new Error('MIDI glue not ready'));
 }

@@ -113,6 +113,21 @@ class TinyMidiPCM {
 // ---------------------------------------------------------------------------
 // Jagex 377 control plane (signlink + MidiPlayer) over TinyMidiPCM
 // ---------------------------------------------------------------------------
+
+/** Plays that arrive before async init finishes (title music race). */
+const _midiEarlyQueue = [];
+let _midiGlueReady = false;
+
+function _ensureAudioContext() {
+    if (!window.audioContext) {
+        window.AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (window.AudioContext) {
+            window.audioContext = new window.AudioContext({ sampleRate: 22050 });
+        }
+    }
+    return window.audioContext || null;
+}
+
 (async () => {
     const channels = 2;
     const sampleRate = 22050;
@@ -123,18 +138,19 @@ class TinyMidiPCM {
     /** Java midivol default */
     const DEFAULT_MIDIVOL = 96;
 
-    if (!window.audioContext) {
-        console.warn('[midi] no audioContext — ensure audio.js loads first');
+    const ac = _ensureAudioContext();
+    if (!ac) {
+        console.warn('[midi] no AudioContext — MIDI disabled');
         return;
     }
 
     let samples = new Float32Array();
     let bufferSources = [];
     let flushInterval = null;
-    let lastTime = window.audioContext.currentTime;
+    let lastTime = ac.currentTime;
 
-    const gainNode = window.audioContext.createGain();
-    gainNode.connect(window.audioContext.destination);
+    const gainNode = ac.createGain();
+    gainNode.connect(ac.destination);
 
     // --- MidiPlayer-equivalent volume (Java midivol 0..128 → gain) ---
     // getVolume with channels[i]=12800: sqrt(((12800*vol)>>8)*12800)
@@ -157,7 +173,7 @@ class TinyMidiPCM {
     function applyPlayerVolume(vol) {
         playerVolume = vol | 0;
         const g = midivolToLinearGain(playerVolume);
-        const t = window.audioContext.currentTime;
+        const t = ac.currentTime;
         gainNode.gain.cancelScheduledValues(t);
         gainNode.gain.setValueAtTime(g, t);
     }
@@ -180,7 +196,11 @@ class TinyMidiPCM {
     const tinyMidiPCM = new TinyMidiPCM({
         renderInterval,
         onPCMData: pcm => {
-            const float32 = new Float32Array(pcm.buffer);
+            // Wasm writes float32 PCM into the buffer (same as pre-Decision-012 glue).
+            const float32 = new Float32Array(pcm.buffer, pcm.byteOffset, (pcm.byteLength / 4) | 0);
+            if (float32.length === 0) {
+                return;
+            }
             const temp = new Float32Array(samples.length + float32.length);
             temp.set(samples, 0);
             temp.set(float32, samples.length);
@@ -189,8 +209,13 @@ class TinyMidiPCM {
         onRenderEnd: () => {
             // Java Sequencer loopCount -1 when midifade==1 (song); jingle midifade==0 plays once
             if (loopSong && isRunning && activeMidiBytes) {
-                lastTime = window.audioContext.currentTime;
-                tinyMidiPCM.render(activeMidiBytes);
+                lastTime = ac.currentTime;
+                try {
+                    tinyMidiPCM.render(activeMidiBytes);
+                } catch (e) {
+                    console.warn('[midi] loop render failed', e);
+                    isRunning = false;
+                }
             } else {
                 isRunning = false;
             }
@@ -228,12 +253,19 @@ class TinyMidiPCM {
     applyPlayerVolume(DEFAULT_MIDIVOL);
 
     function flush() {
-        if (!window.audioContext || !samples.length) {
+        if (!ac || !samples.length) {
             return;
         }
-        const bufferSource = window.audioContext.createBufferSource();
-        const length = samples.length / channels;
-        const audioBuffer = window.audioContext.createBuffer(channels, length, sampleRate);
+        if (ac.state === 'suspended') {
+            ac.resume().catch(() => {});
+        }
+        const bufferSource = ac.createBufferSource();
+        const length = (samples.length / channels) | 0;
+        if (length <= 0) {
+            samples = new Float32Array();
+            return;
+        }
+        const audioBuffer = ac.createBuffer(channels, length, sampleRate);
         for (let channel = 0; channel < channels; channel++) {
             const audioData = audioBuffer.getChannelData(channel);
             let offset = channel;
@@ -242,8 +274,8 @@ class TinyMidiPCM {
                 offset += channels;
             }
         }
-        if (lastTime < window.audioContext.currentTime) {
-            lastTime = window.audioContext.currentTime;
+        if (lastTime < ac.currentTime) {
+            lastTime = ac.currentTime;
         }
         bufferSource.buffer = audioBuffer;
         bufferSource.connect(gainNode);
@@ -261,7 +293,7 @@ class TinyMidiPCM {
         samples = new Float32Array();
         tinyMidiPCM.cancelRender();
         if (bufferSources.length) {
-            const t = window.audioContext.currentTime;
+            const t = ac.currentTime;
             bufferSources.forEach(s => {
                 try {
                     s.stop(t);
@@ -276,16 +308,29 @@ class TinyMidiPCM {
     /** Java MidiPlayer.play(sequence, loop, volume) — loop 1 → infinite */
     function midiPlayerPlay(midiBytes, loop, volume) {
         if (!tinyMidiPCM.soundfontPtr || !midiBytes || midiBytes.length === 0) {
+            console.warn('[midi] play skipped: no soundfont or empty mid', {
+                sf: !!tinyMidiPCM.soundfontPtr,
+                len: midiBytes && midiBytes.length
+            });
             return;
+        }
+        if (ac.state === 'suspended') {
+            ac.resume().catch(() => {});
         }
         stopPcm();
         activeMidiBytes = midiBytes instanceof Uint8Array ? midiBytes : new Uint8Array(midiBytes);
         loopSong = loop === 1;
         isRunning = true;
-        midiPlayerSetVolume(0, volume);
-        lastTime = window.audioContext.currentTime;
+        // Always apply volume (do not early-out) so first play is audible
+        applyPlayerVolume(volume | 0);
+        lastTime = ac.currentTime;
         flushInterval = setInterval(flush, flushTime);
-        tinyMidiPCM.render(activeMidiBytes);
+        try {
+            tinyMidiPCM.render(activeMidiBytes);
+        } catch (e) {
+            console.warn('[midi] render failed', e);
+            isRunning = false;
+        }
     }
 
     function midiPlayerStop() {
@@ -389,9 +434,9 @@ class TinyMidiPCM {
             return;
         }
         midifade = fading ? 1 : 0;
-        pendingMidi = data instanceof Uint8Array ? data : new Uint8Array(data);
+        // Copy — onDemand may reuse the packet buffer
+        pendingMidi = data instanceof Uint8Array ? data.slice() : new Uint8Array(data);
         midiCmd = 'play';
-        // Process immediately so first frame does not wait 50ms
         audioLoop();
     };
 
@@ -438,8 +483,27 @@ class TinyMidiPCM {
         return { ok };
     };
 
+    _midiGlueReady = true;
+    // Drain plays that arrived while wasm/sf2 were loading (title music race).
+    while (_midiEarlyQueue.length) {
+        const item = _midiEarlyQueue.shift();
+        try {
+            if (item.op === 'play') {
+                await window._tinyMidiPlay(item.data, 0, item.fade);
+            } else if (item.op === 'stop') {
+                await window._tinyMidiStop();
+            } else if (item.op === 'vol') {
+                window._tinyMidiAdjustVolumeDb(item.midivol, item.applyNow);
+            }
+        } catch (e) {
+            console.warn('[midi] early queue item failed', e);
+        }
+    }
+
     console.info('[midi] Jagex 377 control plane ready (Florestan bank, midivol scale)');
-})();
+})().catch(err => {
+    console.error('[midi] glue init failed', err);
+});
 
 /**
  * @param {Uint8Array} data
@@ -447,9 +511,19 @@ class TinyMidiPCM {
  * @param {boolean} fade Java saveMidi fade → midifade
  */
 export function playMidi(data, _volumeIgnored, fade) {
-    if (window._tinyMidiPlay) {
-        window._tinyMidiPlay(data, _volumeIgnored, fade);
+    if (!data || data.length === 0) {
+        return;
     }
+    if (window._tinyMidiPlay && _midiGlueReady) {
+        window._tinyMidiPlay(data, _volumeIgnored, fade);
+        return;
+    }
+    // Queue until async init finishes (common for scape_main during load)
+    _midiEarlyQueue.push({
+        op: 'play',
+        data: data instanceof Uint8Array ? data.slice() : new Uint8Array(data),
+        fade: !!fade
+    });
 }
 
 /**
@@ -457,13 +531,17 @@ export function playMidi(data, _volumeIgnored, fade) {
  * @param {boolean} [applyNow=true] Java only voladjust when already midiActive
  */
 export function setMidiVolume(midivol, applyNow) {
-    if (window._tinyMidiAdjustVolumeDb) {
+    if (window._tinyMidiAdjustVolumeDb && _midiGlueReady) {
         window._tinyMidiAdjustVolumeDb(midivol, applyNow);
+        return;
     }
+    _midiEarlyQueue.push({ op: 'vol', midivol, applyNow });
 }
 
 export function stopMidi(_fade) {
-    if (window._tinyMidiStop) {
+    if (window._tinyMidiStop && _midiGlueReady) {
         window._tinyMidiStop();
+        return;
     }
+    _midiEarlyQueue.push({ op: 'stop' });
 }

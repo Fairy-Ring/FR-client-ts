@@ -839,35 +839,39 @@ export default class World {
         if (ground) {
             const shape: number = ground.overlayShape;
             const rotation: number = ground.overlayRotation;
+            // Values from setGround: minimapOverlay=overlayRgb (var93), minimapUnderlay=underlayRgb (var88).
+            // Java 377 method309: field915=underlayRgb → shape bit 0; field916=overlayRgb → shape bit 1.
+            // (289 names these fields backwards but stores the same values; mask 1 = overlay.)
             const overlay: number = ground.minimapOverlay;
             const underlay: number = ground.minimapUnderlay;
             const minimapShape = MINIMAP_SHAPE[shape];
             const minimapRotation = MINIMAP_ROTATE[rotation];
 
             let off: number = 0;
-            if (overlay !== 0) {
+            if (underlay !== 0) {
                 for (let i: number = 0; i < 4; i++) {
-                    dst[offset] = minimapShape[minimapRotation[off++]] === 0 ? overlay : underlay;
-                    dst[offset + 1] = minimapShape[minimapRotation[off++]] === 0 ? overlay : underlay;
-                    dst[offset + 2] = minimapShape[minimapRotation[off++]] === 0 ? overlay : underlay;
-                    dst[offset + 3] = minimapShape[minimapRotation[off++]] === 0 ? overlay : underlay;
+                    dst[offset] = minimapShape[minimapRotation[off++]] === 0 ? underlay : overlay;
+                    dst[offset + 1] = minimapShape[minimapRotation[off++]] === 0 ? underlay : overlay;
+                    dst[offset + 2] = minimapShape[minimapRotation[off++]] === 0 ? underlay : overlay;
+                    dst[offset + 3] = minimapShape[minimapRotation[off++]] === 0 ? underlay : overlay;
                     offset += step;
                 }
                 return;
             }
 
+            // No underlay RGB: only paint overlay where the shape mask is set (Java method309 else branch).
             for (let i: number = 0; i < 4; i++) {
                 if (minimapShape[minimapRotation[off++]] !== 0) {
-                    dst[offset] = underlay;
+                    dst[offset] = overlay;
                 }
                 if (minimapShape[minimapRotation[off++]] !== 0) {
-                    dst[offset + 1] = underlay;
+                    dst[offset + 1] = overlay;
                 }
                 if (minimapShape[minimapRotation[off++]] !== 0) {
-                    dst[offset + 2] = underlay;
+                    dst[offset + 2] = overlay;
                 }
                 if (minimapShape[minimapRotation[off++]] !== 0) {
-                    dst[offset + 3] = underlay;
+                    dst[offset + 3] = overlay;
                 }
                 offset += step;
             }

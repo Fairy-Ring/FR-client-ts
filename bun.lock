@@ -6,6 +6,7 @@
       "name": "client2",
       "dependencies": {
         "fflate": "^0.8.2",
+        "spessasynth_lib": "^4.3.13",
       },
       "devDependencies": {
         "@eslint/js": "^9.39.2",
@@ -242,6 +243,12 @@
     "source-map": ["source-map@0.6.1", "", {}, "sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g=="],
 
     "source-map-support": ["source-map-support@0.5.21", "", { "dependencies": { "buffer-from": "^1.0.0", "source-map": "^0.6.0" } }, "sha512-uBHU3L3czsIyYXKX88fdrGovxdSCoTGDRZ6SYXtSRxLZUzHg5P/66Ht6uoUlHu9EZod+inXhKo3qQgwXUT/y1w=="],
+
+    "spessasynth_core": ["spessasynth_core@4.3.17", "", { "dependencies": { "stb-vorbis": "latest" } }, "sha512-izy6QR9TX7ZFOlMQzDMSLn3cYTYyXvIUGRaLrKYTMJPCiYnaJ3+3IdPaBiClR97Y4/89oEAdbMPUXpaqXCDjaw=="],
+
+    "spessasynth_lib": ["spessasynth_lib@4.3.13", "", { "dependencies": { "spessasynth_core": "latest" } }, "sha512-lDf6ImzgNvJKhRjem0ehS7lhYag/fe5UzCJutp76j2EvfpRTiYCS5xBkXOwx16YWVNuLNjPh21zWqmusKiXL8A=="],
+
+    "stb-vorbis": ["stb-vorbis@0.0.5", "", {}, "sha512-XZkvJDA++nsZnOV0b72L7fDP9/F5S2KnynL7zaEH8JojLzlEUXMQPyiIeViKJVF6z7b+GfcvwJN/EbHyWn8Ytw=="],
 
     "strip-json-comments": ["strip-json-comments@3.1.1", "", {}, "sha512-6fPc+R4ihwqP6N/aIv2f1gMH8lOVtWQHoqC4yK6oSDVVocumAsfCqjkXnqiYMhmMwS/mEHLp7Vehlt3ql6lEig=="],
 

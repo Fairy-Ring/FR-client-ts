@@ -1,5 +1,6 @@
 import { playWave, replayWave, setWaveVolume } from '#3rdparty/audio.js';
-import { stopMidi, setMidiVolume, playMidi } from '#3rdparty/tinymidipcm.js';
+// Decision 012: Jagex control plane + Spessa (Florestan bank) — single product backend
+import { stopMidi, setMidiVolume, playMidi } from '#/sound/MidiFacade.js';
 
 import ClientBuild from '#/client/ClientBuild.js';
 import { ClientCode } from '#/client/ClientCode.js';

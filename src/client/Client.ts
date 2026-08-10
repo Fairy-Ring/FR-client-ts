@@ -582,7 +582,8 @@ export class Client extends GameShell {
     private minimapFlagZ: number = 0;
 
     private midiActive: boolean = true;
-    private midiVolume: number = 0;
+    /** Java signlink.midivol 0..128 (default 96). Not dB — Decision 012. */
+    private midiVolume: number = 96;
     private midiSong: number = -1;
     private nextMidiSong: number = -1;
     private nextMusicDelay: number = 0;
@@ -671,12 +672,29 @@ export class Client extends GameShell {
         ClientBuild.lowMem = false;
     }
 
-    /** Java saveMidi — only when music enabled (midiActive). */
+    /**
+     * Java `saveMidi(fade, data)` → midifade + midisave → signlink play.
+     * Volume is signlink.midivol (set via options clientcode 3), not per-call dB.
+     */
     saveMidi(data: Uint8Array, fading: boolean) {
         if (!this.midiActive) {
             return;
         }
         playMidi(data, this.midiVolume, fading);
+    }
+
+    /** Java `stopMidi` — midifade=0, midi="stop". */
+    private stopMidiJava(): void {
+        stopMidi(false);
+    }
+
+    /**
+     * Java `setMidiVolume(midiActive, midivol)` — always writes midivol;
+     * voladjust only when music was already active.
+     */
+    private setMidiVolumeJava(active: boolean, midivol: number): void {
+        this.midiVolume = midivol;
+        setMidiVolume(midivol, active);
     }
 
     private getIntParam(name: string, fallback: number = 0): number {
@@ -12148,37 +12166,34 @@ export class Client extends GameShell {
             ObjType.spriteCache?.clear();
             this.redrawFrame = true;
         } else if (clientcode === 3) {
+            // Java Client clientcode 3: midivol 128/96/64/32 / mute (Decision 012)
             const lastMidiActive: boolean = this.midiActive;
 
             if (value === 0) {
-                this.midiVolume = 0; // +0 dB
+                this.setMidiVolumeJava(this.midiActive, 128);
                 this.midiActive = true;
             } else if (value === 1) {
-                this.midiVolume = -4; // -4 dB
+                this.setMidiVolumeJava(this.midiActive, 96);
                 this.midiActive = true;
             } else if (value === 2) {
-                this.midiVolume = -8; // -8 dB
+                this.setMidiVolumeJava(this.midiActive, 64);
                 this.midiActive = true;
             } else if (value === 3) {
-                this.midiVolume = -12; // -12 dB
+                this.setMidiVolumeJava(this.midiActive, 32);
                 this.midiActive = true;
             } else if (value === 4) {
                 this.midiActive = false;
             }
 
-            if (this.midiActive) {
-                setMidiVolume(this.midiVolume);
-            }
-
-            if (this.midiActive !== lastMidiActive) {
+            // Java only restarts music when midiActive flips (and !lowMem)
+            if (this.midiActive !== lastMidiActive && !Client.lowMem) {
                 if (this.midiActive) {
                     this.midiSong = this.nextMidiSong;
                     this.midiFading = true;
                     this.onDemand?.request(2, this.midiSong);
                 } else {
-                    stopMidi(false);
+                    this.stopMidiJava();
                 }
-
                 this.nextMusicDelay = 0;
             }
         } else if (clientcode === 4) {

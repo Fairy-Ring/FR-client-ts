@@ -25,6 +25,50 @@ export class SpessaBackend implements MidiBackend {
     private playing = false;
     private soundfontLoaded = false;
     private midivol = 96;
+    private unlockInstalled = false;
+
+    /**
+     * Browser autoplay: AudioContext starts `suspended` until a user gesture.
+     * `ctx.resume()` may **never resolve** until focus/click — do not await it
+     * unbounded or SF2 load / song load holds the whole MIDI init path (and
+     * feels like the client is stuck until the window is focused).
+     */
+    private async tryResume(maxWaitMs = 80): Promise<void> {
+        if (!this.ctx || this.ctx.state !== 'suspended') {
+            return;
+        }
+        try {
+            await Promise.race([
+                this.ctx.resume().catch(() => {}),
+                new Promise<void>(r => setTimeout(r, maxWaitMs))
+            ]);
+        } catch {
+            /* still suspended — unlock listeners will retry */
+        }
+    }
+
+    /** One-shot + visibility unlock so music starts when the tab is focused/clicked. */
+    private installUnlock(): void {
+        if (this.unlockInstalled || !this.ctx) {
+            return;
+        }
+        this.unlockInstalled = true;
+        const ctx = this.ctx;
+        const kick = () => {
+            if (ctx.state === 'suspended') {
+                void ctx.resume().catch(() => {});
+            }
+        };
+        for (const ev of ['pointerdown', 'keydown', 'touchstart', 'mousedown'] as const) {
+            window.addEventListener(ev, kick, { capture: true, passive: true });
+        }
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                kick();
+            }
+        });
+        window.addEventListener('focus', kick);
+    }
 
     private async ensure(): Promise<void> {
         if (this.ready && this.synth && this.seq) {
@@ -35,9 +79,9 @@ export class SpessaBackend implements MidiBackend {
             window.audioContext = new window.AudioContext({ sampleRate: 22050 });
         }
         this.ctx = window.audioContext;
-        if (this.ctx.state === 'suspended') {
-            await this.ctx.resume().catch(() => {});
-        }
+        this.installUnlock();
+        // Bounded: never block SF2/worklet setup on autoplay policy
+        await this.tryResume(80);
 
         await this.ctx.audioWorklet.addModule(PROCESSOR_URL);
 
@@ -92,9 +136,8 @@ export class SpessaBackend implements MidiBackend {
         if (!this.soundfontLoaded) {
             throw new Error('[midi:spessa] setSoundfont before play');
         }
-        if (this.ctx!.state === 'suspended') {
-            await this.ctx!.resume().catch(() => {});
-        }
+        // Bounded resume — full unlock on next gesture/focus via installUnlock
+        await this.tryResume(80);
 
         this.stop();
 
@@ -114,10 +157,12 @@ export class SpessaBackend implements MidiBackend {
                     /* ignore */
                 }
             };
+            // 4s not 15s: suspended audio often never fires songChange until focus;
+            // long hangs felt like the client was stuck.
             const timer = setTimeout(() => {
                 cleanup();
                 reject(new Error('[midi:spessa] loadNewSongList timed out'));
-            }, 15000);
+            }, 4000);
             this.seq!.eventHandler.addEvent('songChange', tid, () => {
                 clearTimeout(timer);
                 cleanup();

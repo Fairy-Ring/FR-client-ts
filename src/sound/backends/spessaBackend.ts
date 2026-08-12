@@ -26,6 +26,8 @@ export class SpessaBackend implements MidiBackend {
     private soundfontLoaded = false;
     private midivol = 96;
     private unlockInstalled = false;
+    /** Incremented at each play() so a superseded load never calls seq.play(). */
+    private playGen = 0;
 
     /**
      * Browser autoplay: AudioContext starts `suspended` until a user gesture.
@@ -139,6 +141,7 @@ export class SpessaBackend implements MidiBackend {
         // Bounded resume — full unlock on next gesture/focus via installUnlock
         await this.tryResume(80);
 
+        const gen = ++this.playGen;
         this.stop();
 
         const ab = this.copyToArrayBuffer(smf);
@@ -182,13 +185,25 @@ export class SpessaBackend implements MidiBackend {
             }
         });
 
+        if (gen !== this.playGen) {
+            return;
+        }
+
         this.seq!.loopCount = loop ? -1 : 0;
-        this.applyMasterGain();
+        // Java MidiPlayer.play = setSequence + start from the beginning.
+        // Seeking stop() to old duration leaked pausedTime into seq.play() so the
+        // new track started minutes in (or looked like it never changed).
+        try {
+            this.seq!.currentTime = 0;
+        } catch {
+            /* ignore */
+        }
         this.seq!.play();
         this.playing = true;
-        this.applyMasterGain();
+        // Do not applyMasterGain here — MidiFacade owns midivol / fade ±8.
+        // Slamming gain to this.midivol (often 0 at fade-in start) cancelled the ramp.
         console.info(
-            `[midi:spessa] play smf=${smf.byteLength}B loop=${loop} duration=${(this.seq!.duration ?? 0).toFixed(2)}s midivol=${this.midivol} gain=${midivolToGain(this.midivol).toFixed(3)}`
+            `[midi:spessa] play smf=${smf.byteLength}B loop=${loop} duration=${(this.seq!.duration ?? 0).toFixed(2)}s midivol=${this.midivol} gain=${midivolToGain(this.midivol).toFixed(3)} t=${(this.seq!.currentTime ?? 0).toFixed(2)}`
         );
     }
 
@@ -196,11 +211,11 @@ export class SpessaBackend implements MidiBackend {
         if (!this.seq) {
             return;
         }
+        // Java MidiPlayer.stop = sequencer.stop + all-notes-off. Do not seek to
+        // duration: Spessa treats time>=duration as loop/restart, and the main
+        // thread pausedTime becomes the old song length (track swap starts late).
         try {
             this.seq.pause();
-            if (this.seq.duration > 0) {
-                this.seq.currentTime = this.seq.duration;
-            }
         } catch {
             /* ignore */
         }

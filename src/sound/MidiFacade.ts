@@ -85,12 +85,13 @@ function signlinkPlayMidi(): void {
         const mid = pendingMidi;
         const onErr = (e: unknown) => console.warn('[midi] play failed', e);
         if (midifade !== 0 && midiFadingIn) {
-            // Java: after fade-out, start new sequence at midiFadeVol (0) then ramp midivol
+            // Java: after fade-out, start new sequence at midiFadeVol (0) then ramp midivol.
+            // Re-entry during an in-progress fade-in keeps the ramp position (don't slam 0).
             midiFadingOut = false;
-            midiFadeVol = 0;
-            applyMidivol(0);
-            // Do not re-apply 0 when play() resolves — that races the fade-in ramp to mute
-            void backend.play(mid, loop).catch(onErr);
+            applyMidivol(midiFadeVol);
+            void backend.play(mid, loop).then(() => {
+                applyMidivol(midiFadingIn ? midiFadeVol : midivol);
+            }).catch(onErr);
         } else {
             applyMidivol(midivol);
             void backend.play(mid, loop).then(() => applyMidivol(midivol)).catch(onErr);
@@ -122,6 +123,7 @@ function audioLoop(): void {
         if (midiFadeVol === 0) {
             midiFadingOut = false;
             midiFadingIn = true;
+            midiFadeVol = 0;
         }
     }
 
@@ -251,6 +253,31 @@ export function stopMidi(_fade?: boolean): void {
         return;
     }
     stopMidiStock();
+}
+
+/** Snapshot for harness / once-over probes — not a game API. */
+export function debugMidi(): {
+    ready: boolean;
+    midiCmd: string;
+    midifade: number;
+    midivol: number;
+    midiFadeVol: number;
+    midiFadingIn: boolean;
+    midiFadingOut: boolean;
+    pending: number;
+    playing: boolean;
+} {
+    return {
+        ready,
+        midiCmd,
+        midifade,
+        midivol,
+        midiFadeVol,
+        midiFadingIn,
+        midiFadingOut,
+        pending: pendingMidi?.length ?? 0,
+        playing: backend?.isPlaying() ?? false
+    };
 }
 
 ensureInit();

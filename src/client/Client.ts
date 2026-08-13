@@ -3809,6 +3809,10 @@ export class Client extends GameShell {
             }
         }
 
+        // Java updateAudio: one client cycle = GameShell.deltime 20ms.
+        // nextMusicDelay is milliseconds (MIDI_JINGLE 3-byte). Do not call this
+        // faster than 20ms or jingles cut short. At 0, re-request nextMidiSong
+        // (last MIDI_SONG / zone) with fade — era: complete jingle then region.
         if (this.nextMusicDelay > 0) {
             this.nextMusicDelay -= 20;
 

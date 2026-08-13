@@ -89,7 +89,6 @@ export const enum ClientProt {
 
     MAP_BUILD_COMPLETE = 6,
     MOVE_OPCLICK = 247,
-    // engine name: REPORT_ABUSE (todo rename → SEND_SNAPSHOT); Client.ts uses SEND_SNAPSHOT
     SEND_SNAPSHOT = 184,
     MOVE_MINIMAPCLICK = 213,
     INV_BUTTOND = 123,

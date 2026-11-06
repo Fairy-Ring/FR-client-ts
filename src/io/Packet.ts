@@ -303,7 +303,7 @@ export default class Packet extends Linkable2 {
             ((this.data[this.pos - 1] & 0xff) << 16) +
             ((this.data[this.pos - 2] & 0xff) << 8) +
             (this.data[this.pos - 3] & 0xff);
-        return v > 0xffffff ? v - 0x1000000 : v;
+        return v > 0x7fffff ? v - 0x1000000 : v;
     }
 
     g3s_alt2(): number {
@@ -312,7 +312,7 @@ export default class Packet extends Linkable2 {
             ((this.data[this.pos - 3] & 0xff) << 16) +
             ((this.data[this.pos - 1] & 0xff) << 8) +
             (this.data[this.pos - 2] & 0xff);
-        return v > 0xffffff ? v - 0x1000000 : v;
+        return v > 0x7fffff ? v - 0x1000000 : v;
     }
 
     g3s_alt3(): number {
@@ -321,7 +321,7 @@ export default class Packet extends Linkable2 {
             ((this.data[this.pos - 2] & 0xff) << 16) +
             ((this.data[this.pos - 3] & 0xff) << 8) +
             (this.data[this.pos - 1] & 0xff);
-        return v > 0xffffff ? v - 0x1000000 : v;
+        return v > 0x7fffff ? v - 0x1000000 : v;
     }
 
     /** Java `g4_alt1` */

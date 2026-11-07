@@ -3305,14 +3305,14 @@ export class Client extends GameShell {
                             if (this.socialInputType === 3 && this.socialInput.length > 0) {
                                 writePrivateMessage(
                                     this.out,
-                                    this.socialUserhash,
+                                    this.socialUserhash ?? 0n,
                                     this.socialInput
                                 );
                                 // Java only requires type 3 and nonempty text; keep even a zero hash wire-compatible.
 
                                 this.socialInput = JString.toSentenceCase(this.socialInput);
                                 this.socialInput = WordFilter.filter(this.socialInput);
-                                this.addMessage(JString.toScreenName(JString.toRawUsername(this.socialUserhash)), this.socialInput, 6);
+                                this.addMessage(JString.toScreenName(JString.toRawUsername(this.socialUserhash ?? 0n)), this.socialInput, 6);
 
                                 if (this.chatPrivateMode === 2) {
                                     this.chatPrivateMode = 1;

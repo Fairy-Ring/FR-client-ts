@@ -25,9 +25,13 @@ export default class SeqType {
     static list: SeqType[] = [];
 
     numFrames: number = 0;
-    frames: Int16Array | null = null;
-    iframes: Int16Array | null = null;
-    delay: Int16Array | null = null;
+    // Client-Java 377 SeqType stores these in int[] (SeqType.java field777/778/779);
+    // Packet.g2 is unsigned (0..65535) and 377 data references frame ids up to 33567,
+    // so Int16Array storage would wrap ids >= 32768 negative. 65535 stays the iframes
+    // "no interleave" sentinel (Java field778 == 65535 → -1).
+    frames: Int32Array | null = null;
+    iframes: Int32Array | null = null;
+    delay: Int32Array | null = null;
     loops: number = -1;
     walkmerge: Int32Array | null = null;
     reachforward: boolean = false;
@@ -90,13 +94,13 @@ export default class SeqType {
                 if (this.numFrames === 0) {
                     this.numFrames = 1;
 
-                    this.frames = new Int16Array(1);
+                    this.frames = new Int32Array(1);
                     this.frames[0] = -1;
 
-                    this.iframes = new Int16Array(1);
+                    this.iframes = new Int32Array(1);
                     this.iframes[0] = -1;
 
-                    this.delay = new Int16Array(1);
+                    this.delay = new Int32Array(1);
                     this.delay[0] = -1;
                 }
 
@@ -120,9 +124,9 @@ export default class SeqType {
 
             if (code === 1) {
                 this.numFrames = dat.g1();
-                this.frames = new Int16Array(this.numFrames);
-                this.iframes = new Int16Array(this.numFrames);
-                this.delay = new Int16Array(this.numFrames);
+                this.frames = new Int32Array(this.numFrames);
+                this.iframes = new Int32Array(this.numFrames);
+                this.delay = new Int32Array(this.numFrames);
 
                 for (let i: number = 0; i < this.numFrames; i++) {
                     this.frames[i] = dat.g2();

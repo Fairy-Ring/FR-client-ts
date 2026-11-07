@@ -52,6 +52,8 @@ Exact steps depend on Engine-TS / workspace pack pipeline. Typical flow:
 3. Match **revision 377** engine + content branches.
 
 See workspace runbooks for isolation ports and headed harness policy.
+Outbound packet layouts follow Client-Java 377 `Client.java` (`p1isaac` callsites) and `Packet.java` primitives.
+Engine protocol descriptors are cross-checks, not the authority for field order or transforms.
 
 
 ## Completeness disclaimer

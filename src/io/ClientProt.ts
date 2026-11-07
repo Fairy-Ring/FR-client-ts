@@ -1,25 +1,25 @@
 // Client → server opcodes for RS2 rev 377.
-// Source of truth: vendor/engine/src/network/game/client/ClientGameProt.ts
-// Cross-checked against vendor/client-java p1isaac sites.
+// Wire source of truth: Client-Java 377 Client.java p1isaac sites and Packet.java primitives.
+// Engine ClientGameProt descriptors are a cross-check, not packet-layout authority.
 // Java Protocol.field671 (CLIENTPROT_SCRAMBLE) is unused dead data in 377 Client — not ported.
 export const enum ClientProt {
-    NO_TIMEOUT = 40, // engine ClientGameProt.NO_TIMEOUT
+    NO_TIMEOUT = 40,
 
     IDLE_TIMER = 202,
     EVENT_MOUSE_CLICK = 19,
     EVENT_MOUSE_MOVE = 171,
     EVENT_APPLET_FOCUS = 187,
     EVENT_CAMERA_POSITION = 140,
-    EVENT_HAS_WINDOW = 78, // engine only; not used by Client.ts yet
-    EVENT_SYNTH_ERROR = 80, // engine only; not used by Client.ts yet
+    EVENT_HAS_WINDOW = 78, // Java emits only when an applet Frame exists; browser has no equivalent.
+    EVENT_SYNTH_ERROR = 80, // Java audio exception report; emitted from Client.updateAudio.
 
     ANTICHEAT_OPLOGIC1 = 95,
     ANTICHEAT_OPLOGIC2 = 165,
     ANTICHEAT_OPLOGIC3 = 157,
     ANTICHEAT_OPLOGIC4 = 222,
     ANTICHEAT_OPLOGIC5 = 126,
-    // 289-era Client.ts still references these; 377 Java/engine only has OPLOGIC1–5.
-    // Values are unused placeholders (not registered on 377 engine) so names keep compiling.
+    // Legacy 289 placeholders; these are not part of the 377 outbound opcode census.
+    // Keep invalid so p1Enc rejects accidental use.
     ANTICHEAT_OPLOGIC6 = -1,
     ANTICHEAT_OPLOGIC7 = -1,
     ANTICHEAT_OPLOGIC8 = -1,
@@ -31,7 +31,7 @@ export const enum ClientProt {
     ANTICHEAT_CYCLELOGIC4 = 173,
     ANTICHEAT_CYCLELOGIC5 = 248,
     ANTICHEAT_CYCLELOGIC6 = 22,
-    // 289-era only; not in 377 engine (CYCLELOGIC1–6 only).
+    // Legacy 289 placeholder; not part of the 377 outbound opcode census.
     ANTICHEAT_CYCLELOGIC7 = -1,
 
     OPOBJ1 = 77,
@@ -85,11 +85,11 @@ export const enum ClientProt {
     CLOSE_MODAL = 110,
     RESUME_P_COUNTDIALOG = 75,
     TUT_CLICKSIDE = 119,
-    RESUME_P_NAMEDIALOG = 206, // engine only; not used by Client.ts yet
+    RESUME_P_NAMEDIALOG = 206, // chatback name-dialog response
 
     MAP_BUILD_COMPLETE = 6,
     MOVE_OPCLICK = 247,
-    SEND_SNAPSHOT = 184,
+    SEND_SNAPSHOT = 184, // Java REPORT_ABUSE
     MOVE_MINIMAPCLICK = 213,
     INV_BUTTOND = 123,
     IGNORELIST_DEL = 160,

@@ -59,6 +59,7 @@ import PixMap from '#/graphics/PixMap.js';
 
 import ClientStream from '#/io/ClientStream.js';
 import { ClientProt } from '#/io/ClientProt.js';
+import { writeCameraPosition, writeCycleLogic6, writePrivateMessage, writePublicChat, writeReportAbuse, writeSynthError } from '#/io/ClientOutbound.js';
 import Database from '#/io/Database.js';
 import Isaac from '#/io/Isaac.js';
 import JagFile from '#/io/JagFile.js';
@@ -113,6 +114,8 @@ export class Client extends GameShell {
     static cyclelogic8: number = 0;
     static cyclelogic9: number = 0;
     static cyclelogic10: number = 0;
+    /** Java signlink.reporterror; true emits the failing wave id, false emits -1. */
+    static reportErrors: boolean = true;
 
     static oplogic1: number = 0;
     static oplogic2: number = 0;
@@ -2416,9 +2419,7 @@ export class Client extends GameShell {
         if (this.sendCamera && this.sendCameraDelay <= 0) {
             this.sendCameraDelay = 20;
             this.sendCamera = false;
-            this.out.p1Enc(ClientProt.EVENT_CAMERA_POSITION);
-            this.out.p2(this.orbitCameraPitch);
-            this.out.p2(this.orbitCameraYaw);
+            writeCameraPosition(this.out, this.orbitCameraPitch, this.orbitCameraYaw);
         }
 
         if (this.focus && !this.focusIn) {
@@ -3217,6 +3218,11 @@ export class Client extends GameShell {
                 MobileKeyboard.show();
             }
         }
+        Client.cyclelogic6++;
+        if (Client.cyclelogic6 > 161) {
+            Client.cyclelogic6 = 0;
+            writeCycleLogic6(this.out);
+        }
     }
 
     private updateEntityChats(): void {
@@ -3296,14 +3302,13 @@ export class Client extends GameShell {
                                 this.removeFriend(userhash);
                             }
 
-                            if (this.socialInputType === 3 && this.socialInput.length > 0 && this.socialUserhash) {
-                                this.out.p1Enc(ClientProt.MESSAGE_PRIVATE);
-                                this.out.p1(0);
-                                const start: number = this.out.pos;
-
-                                this.out.p8(this.socialUserhash);
-                                WordPack.pack(this.out, this.socialInput);
-                                this.out.psize1(this.out.pos - start);
+                            if (this.socialInputType === 3 && this.socialInput.length > 0) {
+                                writePrivateMessage(
+                                    this.out,
+                                    this.socialUserhash,
+                                    this.socialInput
+                                );
+                                // Java only requires type 3 and nonempty text; keep even a zero hash wire-compatible.
 
                                 this.socialInput = JString.toSentenceCase(this.socialInput);
                                 this.socialInput = WordFilter.filter(this.socialInput);
@@ -3441,75 +3446,8 @@ export class Client extends GameShell {
                                 this.out.p1(this.chatInput.length - 2 + 1);
                                 this.out.pjstr(this.chatInput.substring(2));
                             } else {
-                                let colour: number = 0;
-                                if (this.chatInput.startsWith('yellow:')) {
-                                    colour = 0;
-                                    this.chatInput = this.chatInput.substring(7);
-                                }
-                                if (this.chatInput.startsWith('red:')) {
-                                    colour = 1;
-                                    this.chatInput = this.chatInput.substring(4);
-                                }
-                                if (this.chatInput.startsWith('green:')) {
-                                    colour = 2;
-                                    this.chatInput = this.chatInput.substring(6);
-                                }
-                                if (this.chatInput.startsWith('cyan:')) {
-                                    colour = 3;
-                                    this.chatInput = this.chatInput.substring(5);
-                                }
-                                if (this.chatInput.startsWith('purple:')) {
-                                    colour = 4;
-                                    this.chatInput = this.chatInput.substring(7);
-                                }
-                                if (this.chatInput.startsWith('white:')) {
-                                    colour = 5;
-                                    this.chatInput = this.chatInput.substring(6);
-                                }
-                                if (this.chatInput.startsWith('flash1:')) {
-                                    colour = 6;
-                                    this.chatInput = this.chatInput.substring(7);
-                                }
-                                if (this.chatInput.startsWith('flash2:')) {
-                                    colour = 7;
-                                    this.chatInput = this.chatInput.substring(7);
-                                }
-                                if (this.chatInput.startsWith('flash3:')) {
-                                    colour = 8;
-                                    this.chatInput = this.chatInput.substring(7);
-                                }
-                                if (this.chatInput.startsWith('glow1:')) {
-                                    colour = 9;
-                                    this.chatInput = this.chatInput.substring(6);
-                                }
-                                if (this.chatInput.startsWith('glow2:')) {
-                                    colour = 10;
-                                    this.chatInput = this.chatInput.substring(6);
-                                }
-                                if (this.chatInput.startsWith('glow3:')) {
-                                    colour = 11;
-                                    this.chatInput = this.chatInput.substring(6);
-                                }
-
-                                let effect: number = 0;
-                                if (this.chatInput.startsWith('wave:')) {
-                                    effect = 1;
-                                    this.chatInput = this.chatInput.substring(5);
-                                }
-                                if (this.chatInput.startsWith('scroll:')) {
-                                    effect = 2;
-                                    this.chatInput = this.chatInput.substring(7);
-                                }
-
-                                this.out.p1Enc(ClientProt.MESSAGE_PUBLIC);
-                                this.out.p1(0);
-                                const start: number = this.out.pos;
-
-                                this.out.p1(colour);
-                                this.out.p1(effect);
-                                WordPack.pack(this.out, this.chatInput);
-                                this.out.psize1(this.out.pos - start);
-
+                                const { message, colour, effect } = writePublicChat(this.out, this.chatInput);
+                                this.chatInput = message;
                                 this.chatInput = JString.toSentenceCase(this.chatInput);
                                 this.chatInput = WordFilter.filter(this.chatInput);
 
@@ -3792,8 +3730,8 @@ export class Client extends GameShell {
                         // Java replayWave / wavereplay
                         failed = true;
                     }
-                } catch (_e) {
-                    // Java may report synth error via CLIENT_CHEAT-style packet; skip in browser
+                } catch {
+                    writeSynthError(this.out, this.waveIds[wave], Client.reportErrors);
                 }
 
                 if (failed && this.waveDelay[wave] !== -5) {
@@ -12656,14 +12594,16 @@ export class Client extends GameShell {
             return true;
         } else if (clientCode === ClientCode.CC_MOD_MUTE) {
             this.reportAbuseMuteOption = !this.reportAbuseMuteOption;
-        } else if (clientCode >= ClientCode.CC_REPORT_RULE1 && clientCode <= ClientCode.CC_REPORT_RULE12) {
+        } else if (clientCode >= ClientCode.CC_REPORT_RULE1 && clientCode <= ClientCode.CC_REPORT_RULE13) {
             this.closeInterfaces();
 
             if (this.reportAbuseInput.length > 0) {
-                this.out.p1Enc(ClientProt.SEND_SNAPSHOT);
-                this.out.p8(JString.toUserhash(this.reportAbuseInput));
-                this.out.p1(clientCode - 601);
-                this.out.p1(this.reportAbuseMuteOption ? 1 : 0);
+                writeReportAbuse(
+                    this.out,
+                    JString.toUserhash(this.reportAbuseInput),
+                    clientCode - ClientCode.CC_REPORT_RULE1,
+                    this.reportAbuseMuteOption
+                );
             }
         }
 

@@ -664,6 +664,9 @@ export class Client extends GameShell {
         Pix3D.lowMem = true;
         Client.lowMem = true;
         ClientBuild.lowMem = true;
+        // Java 377 Client.java:1519 (setLowMem) / :1528 (setHighMem) also set LocType.lowMem,
+        // which gates the keep-first model-list rule in LocType decode opcodes 1/5.
+        LocType.lowMem = true;
     }
 
     static setHighMem(): void {
@@ -671,6 +674,7 @@ export class Client extends GameShell {
         Pix3D.lowMem = false;
         Client.lowMem = false;
         ClientBuild.lowMem = false;
+        LocType.lowMem = false;
     }
 
     /**

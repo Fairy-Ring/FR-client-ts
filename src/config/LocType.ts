@@ -34,6 +34,13 @@ export default class LocType {
     static temp: Model[] = new Array(4);
 
     /**
+     * Java `LocType.lowMem` — set by Client.setLowMem/setHighMem.
+     * While false, a loc keeps its first decoded model list: later opcode 1/5
+     * entries only overwrite it while the list is still null.
+     */
+    static lowMem: boolean = false;
+
+    /**
      * Java `LocType.varProvider` — set to the live Client so method562 can read varps.
      * @see Client load path after WordFilter.unpack
      */
@@ -211,14 +218,19 @@ export default class LocType {
 
             if (code === 1) {
                 const count: number = dat.g1();
-                if (count > 0) {
-                    this.model = new Int32Array(count);
+                // Java 377 LocType.method568 (LocType.java:406-421): the model list is
+                // replaced only while it is still null (or in low mem); a later entry
+                // keeps the first list and skips its `count * 3` bytes.
+                if (this.model === null || LocType.lowMem) {
                     this.shape = new Int32Array(count);
+                    this.model = new Int32Array(count);
 
                     for (let i: number = 0; i < count; i++) {
                         this.model[i] = dat.g2();
                         this.shape[i] = dat.g1();
                     }
+                } else {
+                    dat.pos += count * 3;
                 }
             } else if (code === 2) {
                 this.name = dat.gjstr();
@@ -227,11 +239,17 @@ export default class LocType {
             } else if (code === 5) {
                 const count: number = dat.g1();
                 if (count > 0) {
-                    this.model = new Int32Array(count);
-                    this.shape = null;
+                    // Java 377 LocType.method568 (LocType.java:423-435): same keep-first
+                    // rule as opcode 1, and the shape list is dropped with the new models.
+                    if (this.model === null || LocType.lowMem) {
+                        this.shape = null;
+                        this.model = new Int32Array(count);
 
-                    for (let i: number = 0; i < count; i++) {
-                        this.model[i] = dat.g2();
+                        for (let i: number = 0; i < count; i++) {
+                            this.model[i] = dat.g2();
+                        }
+                    } else {
+                        dat.pos += count * 2;
                     }
                 }
             } else if (code === 14) {

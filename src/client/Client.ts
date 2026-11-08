@@ -1476,7 +1476,7 @@ export class Client extends GameShell {
                 if ((this.onDemand.getModelUse(req.file) & 0x62) != 0) {
                     this.redrawSide = true;
 
-                    if (this.chatModalId !== -1) {
+                    if (this.chatModalId !== -1 || this.tutComId !== -1) {
                         this.redrawChat = true;
                     }
                 }

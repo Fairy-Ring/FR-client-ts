@@ -7068,12 +7068,7 @@ export class Client extends GameShell {
                     if (com.layerId === this.sideIcon[this.activeIcon]) {
                         this.redrawSide = true;
                     }
-                    if (
-                        com.layerId === this.chatModalId ||
-                        this.chatModalId === comId ||
-                        com.layerId === this.tutComId ||
-                        this.tutComId === comId
-                    ) {
+                    if (com.layerId === this.chatModalId || this.chatModalId === comId) {
                         this.redrawChat = true;
                     }
                 }

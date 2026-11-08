@@ -9983,16 +9983,18 @@ export class Client extends GameShell {
         if (action === MiniMenuAction.OP_NPC6) {
             const npc: ClientNpc | null = this.npc[a];
             if (npc && npc.type) {
-                const type = npc.type.activeType() ?? npc.type;
-                let examine: string;
+                const type = npc.type.activeType();
+                if (type) {
+                    let examine: string;
 
-                if (!type.desc) {
-                    examine = "It's a " + type.name + '.';
-                } else {
-                    examine = type.desc;
+                    if (!type.desc) {
+                        examine = "It's a " + type.name + '.';
+                    } else {
+                        examine = type.desc;
+                    }
+
+                    this.addMessage('', examine, 0);
                 }
-
-                this.addMessage('', examine, 0);
             }
         }
 

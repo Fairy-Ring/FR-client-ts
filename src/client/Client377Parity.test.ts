@@ -1,9 +1,10 @@
 import { expect, test } from 'bun:test';
 
 import { MiniMenuAction } from '#/client/MiniMenuAction.js';
+import type JagFile from '#/io/JagFile.js';
 
 interface ClientModule {
-    Client: { prototype: object };
+    Client: { new (nodeid: number, lowmem: boolean, members: boolean): object; prototype: object };
 }
 
 let clientModule: Promise<ClientModule> | null = null;
@@ -25,7 +26,10 @@ function loadClient(): Promise<ClientModule> {
         const canvas = {
             width: 765,
             height: 503,
-            getContext: () => ({}),
+            getContext: () => ({
+                fillRect: () => {},
+                createImageData: (width: number, height: number) => ({ data: new Uint8ClampedArray(width * height * 4) })
+            }),
             dispatchEvent: () => true,
             addEventListener: () => {},
             removeEventListener: () => {},
@@ -129,4 +133,129 @@ test('OnDemand model load redraws an open sticky chat interface', async () => {
 
     expect(client.redrawSide).toBe(true);
     expect(client.redrawChat).toBe(true);
+});
+
+/** Packed opcode 106/77 parents use Ernest's varp and three identical child slots. */
+function multiConfig(): JagFile {
+    const files = new Map<string, Uint8Array>();
+    for (const [name, opcode] of [['npc', 106], ['loc', 77]] as const) {
+        const parent = [opcode, 255, 255, 0, 32, 2, 0, 1, 0, 1, 0, 1, 0];
+        const child = [2, ...new TextEncoder().encode('Concrete form'), 10, 0];
+        files.set(`${name}.dat`, new Uint8Array([0, 2, ...parent, ...child]));
+        files.set(`${name}.idx`, new Uint8Array([0, 2, 0, parent.length, 0, child.length]));
+    }
+    return { read: (name: string) => files.get(name) ?? null } as JagFile;
+}
+
+test('unreceived varps and VARP_SYNC preserve Java zero defaults for multi NPCs and locs', async () => {
+    const [{ Client }, { default: NpcType }, { default: LocType }, { default: ClientLocAnim }, { default: VarpType }, { ServerProt }] =
+        await Promise.all([
+            loadClient(),
+            import('#/config/NpcType.js'),
+            import('#/config/LocType.js'),
+            import('#/dash3d/ClientLocAnim.js'),
+            import('#/config/VarpType.js'),
+            import('#/io/ServerProt.js')
+        ]);
+    const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    const previousNpc = { ...NpcType };
+    const previousLoc = { ...LocType };
+    const previousAnimProvider = ClientLocAnim.varProvider;
+    const previousVarps = VarpType.list;
+    try {
+        Object.defineProperty(globalThis, 'window', { configurable: true, value: { location: { search: '' } } });
+        // The existing constructor's missing-arguments branch creates fields without starting the game loop.
+        const client = Reflect.construct(Client, [undefined, undefined, undefined]) as {
+            var: Int32Array;
+            varServ: Int32Array;
+            ptype: number;
+            psize: number;
+            stream: { available: number; readBytes: () => Promise<void> };
+            readPacket: () => Promise<boolean>;
+        };
+        expect(client.var).toBeInstanceOf(Int32Array);
+        expect(client.varServ).toBeInstanceOf(Int32Array);
+        expect(client.var.length).toBe(2000);
+        expect(client.varServ.length).toBe(2000);
+        expect(client.var.every(value => value === 0)).toBe(true);
+        expect(client.varServ.every(value => value === 0)).toBe(true);
+        expect(client.var).not.toBe(client.varServ);
+
+        const config = multiConfig();
+        NpcType.init(config);
+        LocType.init(config);
+        NpcType.varProvider = client;
+        LocType.varProvider = client;
+        ClientLocAnim.varProvider = client;
+        const npc = NpcType.list(0);
+        const loc = LocType.list(0);
+        const animatedLoc = new ClientLocAnim(0, 10, 0, 0, 0, 0, 0, -1, false) as unknown as {
+            getMultiLoc: () => InstanceType<typeof LocType> | null;
+        };
+        expect(npc.getMultiNpc()?.id).toBe(1);
+        expect(loc.getMultiLoc()?.id).toBe(1);
+        expect(animatedLoc.getMultiLoc()?.id).toBe(1);
+        for (const state of [0, 1, 2, 3, -1]) {
+            client.var[32] = state;
+            const child = state >= 0 && state < 3 ? 1 : undefined;
+            expect(npc.getMultiNpc()?.id).toBe(child);
+            expect(npc.isMultiActive()).toBe(child !== undefined);
+            expect(loc.getMultiLoc()?.id).toBe(child);
+            expect(animatedLoc.getMultiLoc()?.id).toBe(child);
+            if (child === undefined) {
+                expect(npc.getTempModel(-1, -1, null)).toBeNull();
+                expect(npc.getHead()).toBeNull();
+            }
+        }
+
+        client.var[32] = 3;
+        VarpType.list = [];
+        VarpType.list[32] = new VarpType();
+        client.ptype = ServerProt.VARP_SYNC;
+        client.psize = 0;
+        client.stream = { available: 1, readBytes: async () => {} };
+        expect(await client.readPacket()).toBe(true);
+        expect(client.var[32]).toBe(0);
+        expect(npc.getMultiNpc()?.id).toBe(1);
+        expect(loc.getMultiLoc()?.id).toBe(1);
+        expect(animatedLoc.getMultiLoc()?.id).toBe(1);
+    } finally {
+        if (previousWindow) {
+            Object.defineProperty(globalThis, 'window', previousWindow);
+        } else {
+            Reflect.deleteProperty(globalThis, 'window');
+        }
+        Object.assign(NpcType, previousNpc);
+        Object.assign(LocType, previousLoc);
+        ClientLocAnim.varProvider = previousAnimProvider;
+        VarpType.list = previousVarps;
+    }
+});
+
+test('NPC and loc lookups reject invalid indices without changing their decode caches', async () => {
+    await loadClient();
+    const [{ default: NpcType }, { default: LocType }] = await Promise.all([import('#/config/NpcType.js'), import('#/config/LocType.js')]);
+    const previousNpc = { ...NpcType };
+    const previousLoc = { ...LocType };
+    try {
+        const config = multiConfig();
+        NpcType.init(config);
+        LocType.init(config);
+        for (const type of [NpcType, LocType]) {
+            const recent = type.recent!.slice();
+            const recentPos = type.recentPos;
+            const pos = type.dat!.pos;
+            for (const id of [undefined, NaN, Infinity, -1, 0.5, type.numDefinitions, 65535]) {
+                expect(() => type.list(id as number)).toThrow(RangeError);
+                expect(type.recent).toEqual(recent);
+                expect(type.recentPos).toBe(recentPos);
+                expect(type.dat!.pos).toBe(pos);
+            }
+            expect(type.list(0).id).toBe(0);
+            expect(type.list(type.numDefinitions - 1).id).toBe(type.numDefinitions - 1);
+        }
+    } finally {
+        Object.assign(NpcType, previousNpc);
+        Object.assign(LocType, previousLoc);
+    }
 });

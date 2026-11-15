@@ -55,6 +55,8 @@ See workspace runbooks for isolation ports and headed harness policy.
 Outbound packet layouts follow Client-Java 377 `Client.java` (`p1isaac` callsites) and `Packet.java` primitives.
 Engine protocol descriptors are cross-checks, not the authority for field order or transforms.
 
+Client varps follow Java 377's two independent, zero-initialized `int[2000]` arrays, including varps that the server never transmits. NPC and loc morphs use those defaults; an inactive or out-of-range selector means no child is drawn. Type lookups reject invalid definition indices before changing the recent-type cache.
+
 
 ## Completeness disclaimer
 

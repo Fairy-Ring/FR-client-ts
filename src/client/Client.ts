@@ -537,8 +537,8 @@ export class Client extends GameShell {
      * Java `Client.varps` — public so LocType.varProvider / ClientLocAnim.varProvider can read
      * multiloc / multinpc state (method562 / method440).
      */
-    var: number[] = [];
-    private varServ: number[] = [];
+    var: Int32Array = new Int32Array(2000);
+    private varServ: Int32Array = new Int32Array(2000);
 
     private chatInterface: IfType = new IfType();
     private chatScrollHeight: number = 78;

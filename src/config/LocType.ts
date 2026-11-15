@@ -20,7 +20,7 @@ import VarBitType from '#/config/VarBitType.js';
  */
 export interface LocVarProvider {
     /** Java Client.varps */
-    var: number[];
+    var: Int32Array;
 }
 
 export default class LocType {
@@ -114,6 +114,9 @@ export default class LocType {
     static list(id: number): LocType {
         if (!this.recent || !this.idx || !this.dat) {
             throw new Error();
+        }
+        if (!Number.isInteger(id) || id < 0 || id >= this.idx.length) {
+            throw new RangeError(`LocType index out of bounds: ${id}`);
         }
 
         for (let i: number = 0; i < 10; i++) {

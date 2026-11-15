@@ -34,7 +34,7 @@ export default class ClientLocAnim extends ModelSource {
      * Java `ClientLocAnim.varProvider` — set to live Client after load.
      * Used by method440 multiloc resolve.
      */
-    static varProvider: { var: number[] } | null = null;
+    static varProvider: { var: Int32Array } | null = null;
 
     constructor(index: number, shape: number, angle: number, heightSW: number, heightSE: number, heightNE: number, heightNW: number, seq: number, randomFrame: boolean) {
         super();

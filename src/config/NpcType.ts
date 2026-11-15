@@ -16,7 +16,7 @@ import VarBitType from '#/config/VarBitType.js';
  */
 export interface NpcVarProvider {
     /** Java Client.varps */
-    var: number[];
+    var: Int32Array;
 }
 
 export default class NpcType {
@@ -92,6 +92,9 @@ export default class NpcType {
     static list(id: number): NpcType {
         if (!this.recent || !this.idx || !this.dat) {
             throw new Error();
+        }
+        if (!Number.isInteger(id) || id < 0 || id >= this.idx.length) {
+            throw new RangeError(`NpcType index out of bounds: ${id}`);
         }
 
         for (let i: number = 0; i < 20; i++) {

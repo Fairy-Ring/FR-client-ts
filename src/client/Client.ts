@@ -10637,7 +10637,7 @@ export class Client extends GameShell {
 
                     this.menuOption[this.menuNumEntries] = 'Examine @cya@' + loc.name;
                     this.menuAction[this.menuNumEntries] = MiniMenuAction.OP_LOC6;
-                    this.menuParamA[this.menuNumEntries] = typecode;
+                    this.menuParamA[this.menuNumEntries] = loc.id << 14;
                     this.menuParamB[this.menuNumEntries] = x;
                     this.menuParamC[this.menuNumEntries] = z;
                     this.menuNumEntries++;

@@ -57,6 +57,10 @@ Engine protocol descriptors are cross-checks, not the authority for field order 
 
 Client varps follow Java 377's two independent, zero-initialized `int[2000]` arrays, including varps that the server never transmits. NPC and loc morphs use those defaults; an inactive or out-of-range selector means no child is drawn. Type lookups reject invalid definition indices before changing the recent-type cache.
 
+Loc Examine stores the resolved definition id, as Java 377 does (`Client.java:4174-4179`). Its local handler describes that menu-time form. Other loc operations retain the scene typecode. NPC Examine retains the instance index and resolves its current form when selected (`Client.java:10315-10330`).
+
+Run the client regression suite with `bun test`. `Client377Parity.test.ts` covers multiloc Examine, unchanged single-form locs, and NPC form resolution.
+
 
 ## Completeness disclaimer
 

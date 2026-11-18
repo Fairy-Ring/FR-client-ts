@@ -259,3 +259,142 @@ test('NPC and loc lookups reject invalid indices without changing their decode c
         Object.assign(LocType, previousLoc);
     }
 });
+
+/** Synthetic definitions exercise the real config decoder and varp selector. */
+function examineConfig(): JagFile {
+    const files = new Map<string, Uint8Array>();
+    const text = (opcode: number, value: string) => [opcode, ...new TextEncoder().encode(value), 10];
+    for (const [name, opcode] of [
+        ['npc', 106],
+        ['loc', 77]
+    ] as const) {
+        const definitions = [
+            [...text(2, 'null'), opcode, 255, 255, 0, 32, 1, 0, 1, 0, 2, 0],
+            [...text(2, 'Dormant form'), ...text(3, 'The dormant form.'), ...text(30, 'Inspect'), 0],
+            [...text(2, 'Grown form'), ...text(3, 'The grown form.'), ...text(30, 'Inspect'), 0],
+            [...text(2, 'Single form'), ...text(3, 'The single form.'), ...text(30, 'Inspect'), 0]
+        ];
+        files.set(`${name}.dat`, new Uint8Array([0, definitions.length, ...definitions.flat()]));
+        files.set(`${name}.idx`, new Uint8Array([0, definitions.length, ...definitions.flatMap(bytes => [bytes.length >> 8, bytes.length & 255])]));
+    }
+    return { read: (name: string) => files.get(name) ?? null } as JagFile;
+}
+
+test('loc Examine stores the resolved definition, while operations keep the scene typecode', async () => {
+    const [{ Client }, { default: LocType }, { default: Model }] = await Promise.all([loadClient(), import('#/config/LocType.js'), import('#/dash3d/Model.js')]);
+    const previousLoc = { ...LocType };
+    const previousPicked = { count: Model.pickedCount, typecodes: Model.pickedEntityTypecode };
+    const messages: unknown[][] = [];
+    const client = Object.assign(Object.create(Client.prototype), {
+        var: new Int32Array(2000),
+        useMode: 0,
+        targetMode: 0,
+        menuNumEntries: 0,
+        menuOption: [],
+        menuAction: [],
+        menuParamA: [],
+        menuParamB: [],
+        menuParamC: [],
+        chatbackInputOpen: 0,
+        world: { typeCode2: () => 0 },
+        addMessage: (...args: unknown[]) => messages.push(args)
+    }) as {
+        var: Int32Array;
+        menuNumEntries: number;
+        menuOption: string[];
+        menuAction: number[];
+        menuParamA: number[];
+        menuParamB: number[];
+        menuParamC: number[];
+        handleViewportOptions: () => void;
+        useMenuOption: (optionId: number) => void;
+    };
+    try {
+        LocType.init(examineConfig());
+        LocType.varProvider = client;
+        for (const [baseId, state, resolvedId, name, description] of [
+            [0, 0, 1, 'Dormant form', 'The dormant form.'],
+            [0, 1, 2, 'Grown form', 'The grown form.'],
+            [3, 1, 3, 'Single form', 'The single form.']
+        ] as const) {
+            const typecode = (2 << 29) | (baseId << 14) | (24 << 7) | 17;
+            Model.pickedCount = 1;
+            Model.pickedEntityTypecode = new Int32Array([typecode]);
+            client.var[32] = state;
+            client.menuNumEntries = 0;
+            client.handleViewportOptions();
+            const entries = client.menuAction.slice(0, client.menuNumEntries);
+            const examine = entries.indexOf(MiniMenuAction.OP_LOC6);
+            const operation = entries.indexOf(MiniMenuAction.OP_LOC1);
+            expect(examine).toBeGreaterThanOrEqual(0);
+            expect(operation).toBeGreaterThanOrEqual(0);
+            expect(client.menuOption[examine]).toBe(`Examine @cya@${name}`);
+            expect(client.menuParamA[operation]).toBe(typecode);
+            expect(client.menuParamA[examine]).toBe(resolvedId << 14);
+            expect(client.menuParamB[examine]).toBe(17);
+            expect(client.menuParamC[examine]).toBe(24);
+            // Java loc Examine retains the menu-time definition even if its varp changes.
+            client.var[32] = 1 - state;
+            messages.length = 0;
+            client.useMenuOption(examine);
+            expect(messages).toEqual([['', description, 0]]);
+        }
+    } finally {
+        Object.assign(LocType, previousLoc);
+        Model.pickedCount = previousPicked.count;
+        Model.pickedEntityTypecode = previousPicked.typecodes;
+    }
+});
+
+test('NPC Examine stores the instance index and resolves its form again when selected', async () => {
+    const [{ Client }, { default: NpcType }] = await Promise.all([loadClient(), import('#/config/NpcType.js')]);
+    const previousNpc = { ...NpcType };
+    const messages: unknown[][] = [];
+    const client = Object.assign(Object.create(Client.prototype), {
+        var: new Int32Array(2000),
+        npc: [],
+        useMode: 0,
+        targetMode: 0,
+        menuNumEntries: 0,
+        menuOption: [],
+        menuAction: [],
+        menuParamA: [],
+        menuParamB: [],
+        menuParamC: [],
+        chatbackInputOpen: 0,
+        addMessage: (...args: unknown[]) => messages.push(args)
+    }) as {
+        var: Int32Array;
+        npc: { type: InstanceType<typeof NpcType> }[];
+        menuNumEntries: number;
+        menuOption: string[];
+        menuAction: number[];
+        menuParamA: number[];
+        addNpcOptions: (type: InstanceType<typeof NpcType>, index: number, x: number, z: number) => void;
+        useMenuOption: (optionId: number) => void;
+    };
+    try {
+        NpcType.init(examineConfig());
+        NpcType.varProvider = client;
+        const type = NpcType.list(0);
+        client.npc[7] = { type };
+        client.var[32] = 0;
+        client.addNpcOptions(type, 7, 17, 24);
+        const examine = client.menuAction.slice(0, client.menuNumEntries).indexOf(MiniMenuAction.OP_NPC6);
+        expect(examine).toBeGreaterThanOrEqual(0);
+        expect(client.menuOption[examine]).toBe('Examine @yel@Dormant form');
+        expect(client.menuParamA[examine]).toBe(7);
+        for (const [state, expected] of [
+            [0, 'The dormant form.'],
+            [1, 'The grown form.'],
+            [2, null]
+        ] as const) {
+            client.var[32] = state;
+            messages.length = 0;
+            client.useMenuOption(examine);
+            expect(messages).toEqual(expected === null ? [] : [['', expected, 0]]);
+        }
+    } finally {
+        Object.assign(NpcType, previousNpc);
+    }
+});

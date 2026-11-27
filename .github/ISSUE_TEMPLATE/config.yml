@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Quest, NPC, skill, or RuneScript bug (FR-content)
+    url: https://github.com/Fairy-Ring/FR-content/issues/new/choose
+    about: File gameplay content bugs, 2006 historical accuracy evidence, and cache polish in FR-content.
+  - name: Server engine, protocol, or packer bug (FR-engine)
+    url: https://github.com/Fairy-Ring/FR-engine/issues/new/choose
+    about: File server runtime, opcode, compiler, or packer bugs in FR-engine.
+  - name: Research context request (fairy-ring-workspace)
+    url: https://github.com/Fairy-Ring/fairy-ring-workspace/issues/new/choose
+    about: Request a scoped research extract or discuss project-wide decisions.

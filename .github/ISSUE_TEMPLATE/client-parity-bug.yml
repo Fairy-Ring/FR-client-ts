@@ -1,0 +1,45 @@
+name: Client-Java 377 parity bug
+description: Report a behavioral, packet, interface, audio, or rendering divergence between FR-client-ts and Client-Java 377
+title: "parity: "
+labels: ["bug", "parity-377"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for divergences between **FR-client-ts** and **Client-Java 377**.
+        Note: Client-TS **289** is not behavioral truth for revision 377, and bot/harness hooks are out of scope for this repository.
+  - type: input
+    id: java_oracle
+    attributes:
+      label: Client-Java 377 oracle reference
+      description: Cite the exact Java file and line range (or packet opcode/method) that defines revision-377 behavior.
+      placeholder: "e.g., Client.java:10315-10330, Packet.java:p1isaac"
+    validations:
+      required: true
+  - type: textarea
+    id: delta
+    attributes:
+      label: Client-Java 377 behavior vs FR-client-ts behavior
+      placeholder: |
+        Client-Java 377: ...
+        FR-client-ts: ...
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce (and browser / OS if rendering or audio)
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: filer
+    attributes:
+      label: Filed by
+      options:
+        - Human
+        - Coding agent
+    validations:
+      required: true
